@@ -288,3 +288,24 @@ The EdgeEver name, logo, and other brand identifiers distinguish the official pr
 EdgeEver is an independent open-source note-taking application developed and maintained by individuals and the community. It is not affiliated with, authorized, sponsored, or endorsed by Evernote Corporation or its affiliates.
 
 EdgeEver is self-hosted software. Except for official demo instances, project maintainers do not host, control, or review user content. Content stored or displayed by an instance is the responsibility of its users or operators and does not represent the maintainers' views.
+
+---
+
+## Fork: sharvinzlife/edgeever
+
+> **Unofficial fork.** This repository is a fork of [`tianma-if/edgeever`](https://github.com/tianma-if/edgeever). It is not affiliated with, authorized, sponsored, or endorsed by the EdgeEver maintainers. The EdgeEver name and logo remain theirs — see [Trademark and Brand Use](#trademark-and-brand-use) above.
+
+🆕 **[v1.81.0-fork.1](CHANGELOG.md#v1810-fork1)** · base upstream `v1.81.0`
+
+Share links now preview with the note's **own cover image** instead of the app icon: metadata is
+injected server-side for crawlers that do not run JavaScript, the default cover prefers a raster
+image, and a `cover:<src>` tag pins the preview to one specific image. Full notes in
+[`CHANGELOG.md`](CHANGELOG.md).
+
+![EdgeEver share-link preview pipeline](docs/diagrams/edgeever-og-preview.svg)
+
+**Fork releases are tag-only.** `package.json` and `release-summary.json` are left at the upstream
+version so upstream syncs never conflict on them — which means the in-app version screen still
+reports the upstream version. The tag and the [changelog](CHANGELOG.md) are the record of what the
+fork adds.
+
