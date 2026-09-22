@@ -34,6 +34,7 @@ export const buildMetaBlock = ({ title, description, imageUrl, shareUrl }) => {
 };
 
 const RESOURCE_SRC = /^\/api\/v1\/resources\/([^/]+)\/blob\/?$/;
+const SVG_SRC = /\.svg(?:[?#]|$)/i;
 
 /** The resource id from an uploaded-image src, or null for external URLs. */
 export const resourceIdOf = (src) => {
@@ -60,7 +61,16 @@ export const collectImageSrcs = (doc) => {
   return srcs;
 };
 
-/** The cover src for a share: a `cover:` tag naming a present image, else the first image. */
+/**
+ * The default cover: the first image a crawler can actually render. Social
+ * crawlers do not render SVG, so a note whose first image is an SVG badge is
+ * better served by a later raster image. If every image is an SVG, keep the
+ * first — nothing better exists.
+ */
+const defaultCoverSrc = (images) =>
+  images.find((src) => !SVG_SRC.test(src)) ?? images[0] ?? null;
+
+/** The cover src for a share: a `cover:` tag naming a present image, else the default cover. */
 export const resolveCoverSrc = (share) => {
   const images = collectImageSrcs(share?.contentJson);
   const marker = (Array.isArray(share?.tags) ? share.tags : [])
@@ -70,7 +80,7 @@ export const resolveCoverSrc = (share) => {
     const hit = images.find((src) => src === wanted || resourceIdOf(src) === wanted);
     if (hit) return hit;
   }
-  return images[0] ?? null;
+  return defaultCoverSrc(images);
 };
 
 /** Map a note image src to a URL a crawler can fetch without auth. */
@@ -82,6 +92,23 @@ export const toPublicImageUrl = (src, token, baseUrl) => {
     : src;
   if (/^https?:\/\//i.test(path)) return path;
   return `${String(baseUrl).replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+};
+
+/**
+ * A short plain-text summary of a share's markdown for og:description.
+ * Underscores are left intact: they are far more common inside the resource
+ * ids the app writes (`res_530dc5f2…`) than as emphasis markers, and blanking
+ * them mangles the text a reader actually sees.
+ */
+export const describeShare = (share) => {
+  const markdown = typeof share?.contentMarkdown === "string" ? share.contentMarkdown : "";
+  return markdown
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[`*#>]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 150);
 };
 
 /** Inject a meta block immediately before the closing </head>. */

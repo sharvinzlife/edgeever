@@ -37,10 +37,11 @@ describe("buildMetaBlock", () => {
   });
 });
 
-import { collectImageSrcs, resolveCoverSrc, resourceIdOf, toPublicImageUrl } from "./og-preview.mjs";
+import { collectImageSrcs, describeShare, resolveCoverSrc, resourceIdOf, toPublicImageUrl } from "./og-preview.mjs";
 
 const A = "/api/v1/resources/res_aaa/blob";
 const B = "/api/v1/resources/res_bbb/blob";
+const SVG = "https://deploy.example.com/button.svg";
 const doc = (srcs) => ({
   type: "doc",
   content: [{ type: "paragraph", content: srcs.map((src) => ({ type: "image", attrs: { src } })) }],
@@ -83,6 +84,51 @@ describe("resolveCoverSrc", () => {
 
   test("no images returns null", () => {
     expect(resolveCoverSrc({ tags: [], contentJson: doc([]) })).toBeNull();
+  });
+});
+
+describe("resolveCoverSrc raster preference", () => {
+  test("skips an svg when a raster image is also present", () => {
+    expect(resolveCoverSrc({ tags: [], contentJson: doc([SVG, A]) })).toBe(A);
+  });
+
+  test("skips an svg carrying a query string", () => {
+    expect(resolveCoverSrc({ tags: [], contentJson: doc([`${SVG}?v=2`, A]) })).toBe(A);
+  });
+
+  test("falls back to the svg when it is the only image", () => {
+    expect(resolveCoverSrc({ tags: [], contentJson: doc([SVG]) })).toBe(SVG);
+  });
+
+  test("an explicit cover tag naming the svg still wins", () => {
+    expect(resolveCoverSrc({ tags: ["cover:res_bbb"], contentJson: doc([SVG, B]) })).toBe(B);
+  });
+});
+
+describe("describeShare", () => {
+  test("keeps underscores so identifiers stay intact", () => {
+    expect(describeShare({ contentMarkdown: "see res_530dc5f2 for details" }))
+      .toBe("see res_530dc5f2 for details");
+  });
+
+  test("replaces an image with nothing and keeps link text", () => {
+    expect(describeShare({ contentMarkdown: "![shot](https://x/a.png) read [the docs](https://x/d) now" }))
+      .toBe("read the docs now");
+  });
+
+  test("strips heading, emphasis, and quote markers", () => {
+    expect(describeShare({ contentMarkdown: "# Title\n\n> quoted *bold* `code`" }))
+      .toBe("Title quoted bold code");
+  });
+
+  test("collapses whitespace, trims, and caps the length", () => {
+    expect(describeShare({ contentMarkdown: "  a\n\n   b  " })).toBe("a b");
+    expect(describeShare({ contentMarkdown: "x".repeat(400) }).length).toBe(150);
+  });
+
+  test("a non-string contentMarkdown yields an empty string", () => {
+    expect(describeShare({})).toBe("");
+    expect(describeShare(null)).toBe("");
   });
 });
 
