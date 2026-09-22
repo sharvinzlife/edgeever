@@ -48,9 +48,12 @@ Base: upstream [`v1.81.0`](https://github.com/tianma-if/edgeever/releases/tag/v1
 Upstream's `tests/build-metadata.test.ts` asserts that `package.json` equals the checked-out release
 tag. Under the tag-only convention the tag is `1.81.0-fork.<n>` while the file stays at upstream
 `1.81.0`, so **that one test fails while HEAD is exactly on a fork tag** and passes again on the next
-commit — the test's own `if (!currentReleaseTag) return;` guard clears it. This is inherent to the
-version split described under [Versioning](#versioning), and it is why the fork does not push a
-release tag that CI must build green.
+commit — the test's own `if (!currentReleaseTag) return;` guard clears it. Verified both ways:
+2134 pass / 1 fail on the tag, 2135 pass / 0 fail one commit off it. This follows from the version
+split described under [Versioning](#versioning).
+
+No CI is affected. Upstream's release workflows are gated on `github.repository == 'tianma-if/edgeever'`,
+so publishing a fork Release runs nothing that executes the test suite.
 
 ---
 
