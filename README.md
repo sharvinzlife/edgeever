@@ -295,12 +295,12 @@ EdgeEver is self-hosted software. Except for official demo instances, project ma
 
 > **Unofficial fork.** This repository is a fork of [`tianma-if/edgeever`](https://github.com/tianma-if/edgeever). It is not affiliated with, authorized, sponsored, or endorsed by the EdgeEver maintainers. The EdgeEver name and logo remain theirs — see [Trademark and Brand Use](#trademark-and-brand-use) above.
 
-🆕 **[v1.81.0-fork.1](CHANGELOG.md#v1810-fork1)** · base upstream `v1.81.0`
+🆕 **[v1.81.0-fork.2](CHANGELOG.md#v1810-fork2)** · base upstream `v1.81.0`
 
 Share links now preview with the note's **own cover image** instead of the app icon: metadata is
-injected server-side for crawlers that do not run JavaScript, the default cover prefers a raster
-image, and a `cover:<src>` tag pins the preview to one specific image. Full notes in
-[`CHANGELOG.md`](CHANGELOG.md).
+injected server-side for crawlers that do not run JavaScript, the default cover prefers an image a
+crawler can actually render, and a `cover:<src>` tag pins the preview to one specific image. Full
+notes in [`CHANGELOG.md`](CHANGELOG.md).
 
 ![EdgeEver share-link preview pipeline](docs/diagrams/edgeever-og-preview.svg)
 

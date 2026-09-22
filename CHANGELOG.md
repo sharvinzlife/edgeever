@@ -16,6 +16,44 @@ is the record of what changed.
 
 ---
 
+## v1.81.0-fork.2
+
+Base: upstream [`v1.81.0`](https://github.com/tianma-if/edgeever/releases/tag/v1.81.0).
+
+### Fixed
+
+- **The default cover no longer picks an SVG served from an extension-less URL.** The raster
+  preference added in `fork.1` tested the URL for a `.svg` suffix, which misses the endpoints that
+  serve `image/svg+xml` without ever naming it: `img.shields.io` badges and
+  `deploy.workers.cloudflare.com/button`. The test is now inverted — a src is renderable only if it
+  names a raster format (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.avif`, `.bmp`) or is an upload
+  the app serves from its own resource route. A file extension is a filename convention, not the
+  media type a server will send, so the picker now only gambles on types it can name.
+
+### Changed
+
+- `SVG_SRC` is gone; `isRenderableSrc()` replaces it. `.svg` is no longer special-cased — it fails the
+  positive test like any other unnamed type.
+
+### Testing
+
+- `bun test` — 2134 pass, 0 fail (35 in `scripts/og-preview.test.mjs`, up from 29).
+- `bun run typecheck` — clean.
+- **Validated against the live corpus before shipping:** replaying both predicates over all 30 shares
+  on the deployed instance changes exactly one pick — the EdgeEver note moves off a shields.io badge
+  and onto its own first image — with no other share affected.
+
+### Known consequence of tag-only releases
+
+Upstream's `tests/build-metadata.test.ts` asserts that `package.json` equals the checked-out release
+tag. Under the tag-only convention the tag is `1.81.0-fork.<n>` while the file stays at upstream
+`1.81.0`, so **that one test fails while HEAD is exactly on a fork tag** and passes again on the next
+commit — the test's own `if (!currentReleaseTag) return;` guard clears it. This is inherent to the
+version split described under [Versioning](#versioning), and it is why the fork does not push a
+release tag that CI must build green.
+
+---
+
 ## v1.81.0-fork.1
 
 Base: upstream [`v1.81.0`](https://github.com/tianma-if/edgeever/releases/tag/v1.81.0).

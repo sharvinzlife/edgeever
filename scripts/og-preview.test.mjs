@@ -42,6 +42,9 @@ import { collectImageSrcs, describeShare, resolveCoverSrc, resourceIdOf, toPubli
 const A = "/api/v1/resources/res_aaa/blob";
 const B = "/api/v1/resources/res_bbb/blob";
 const SVG = "https://deploy.example.com/button.svg";
+const CF = "https://deploy.workers.cloudflare.com/button";
+const BADGE = "https://img.shields.io/github/stars/tianma-if/edgeever?style=social";
+const PNG = "https://cdn.example.com/cover.png";
 const doc = (srcs) => ({
   type: "doc",
   content: [{ type: "paragraph", content: srcs.map((src) => ({ type: "image", attrs: { src } })) }],
@@ -102,6 +105,32 @@ describe("resolveCoverSrc raster preference", () => {
 
   test("an explicit cover tag naming the svg still wins", () => {
     expect(resolveCoverSrc({ tags: ["cover:res_bbb"], contentJson: doc([SVG, B]) })).toBe(B);
+  });
+});
+
+describe("resolveCoverSrc renderable preference", () => {
+  test("skips a shields.io badge that serves svg from an extension-less url", () => {
+    expect(resolveCoverSrc({ tags: [], contentJson: doc([BADGE, A]) })).toBe(A);
+  });
+
+  test("skips the extension-less cloudflare deploy button", () => {
+    expect(resolveCoverSrc({ tags: [], contentJson: doc([CF, A]) })).toBe(A);
+  });
+
+  test("skips an extension-less badge in favour of a later external raster", () => {
+    expect(resolveCoverSrc({ tags: [], contentJson: doc([BADGE, PNG]) })).toBe(PNG);
+  });
+
+  test("keeps document order among renderable images", () => {
+    expect(resolveCoverSrc({ tags: [], contentJson: doc([PNG, A]) })).toBe(PNG);
+  });
+
+  test("falls back to the first image when no image has a renderable type", () => {
+    expect(resolveCoverSrc({ tags: [], contentJson: doc([BADGE, CF, SVG]) })).toBe(BADGE);
+  });
+
+  test("an explicit cover tag naming an extension-less badge still wins", () => {
+    expect(resolveCoverSrc({ tags: ["cover:res_bbb"], contentJson: doc([BADGE, B]) })).toBe(B);
   });
 });
 

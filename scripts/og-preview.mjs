@@ -34,7 +34,7 @@ export const buildMetaBlock = ({ title, description, imageUrl, shareUrl }) => {
 };
 
 const RESOURCE_SRC = /^\/api\/v1\/resources\/([^/]+)\/blob\/?$/;
-const SVG_SRC = /\.svg(?:[?#]|$)/i;
+const RASTER_SRC = /\.(?:png|jpe?g|webp|gif|avif|bmp)(?:[?#]|$)/i;
 
 /** The resource id from an uploaded-image src, or null for external URLs. */
 export const resourceIdOf = (src) => {
@@ -62,13 +62,23 @@ export const collectImageSrcs = (doc) => {
 };
 
 /**
- * The default cover: the first image a crawler can actually render. Social
- * crawlers do not render SVG, so a note whose first image is an SVG badge is
- * better served by a later raster image. If every image is an SVG, keep the
- * first — nothing better exists.
+ * Whether a crawler can render this image. Only two kinds are known to be
+ * renderable: an upload the app serves from its own resource route, and a URL
+ * that names a raster format. Everything else is passed over — including
+ * `.svg`, but far more importantly the badges that serve SVG from an
+ * extension-less URL (`img.shields.io`, `deploy.workers.cloudflare.com/button`).
+ * A file extension is a filename convention, not the media type a server will
+ * send, so this only gambles on the types it can name.
+ */
+const isRenderableSrc = (src) => RESOURCE_SRC.test(src) || RASTER_SRC.test(src);
+
+/**
+ * The default cover: the first image a crawler can actually render. A note
+ * whose first image is a badge is better served by a later raster image. If no
+ * image has a renderable type, keep the first — nothing better exists.
  */
 const defaultCoverSrc = (images) =>
-  images.find((src) => !SVG_SRC.test(src)) ?? images[0] ?? null;
+  images.find(isRenderableSrc) ?? images[0] ?? null;
 
 /** The cover src for a share: a `cover:` tag naming a present image, else the default cover. */
 export const resolveCoverSrc = (share) => {
