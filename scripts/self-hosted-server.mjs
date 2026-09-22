@@ -9,6 +9,7 @@ import { nodePublicFetch } from "../apps/api/src/node-public-network.ts";
 import { createSelfHostedStorageAdapter } from "../apps/api/src/self-hosted-storage-adapter.ts";
 import { resolveSelfHostedConfig } from "./self-hosted-config.mjs";
 import { ensureSelfHostedCredentialSecrets, loadSelfHostedEnvironment } from "./self-hosted-secrets.mjs";
+import { createSharePageRenderer } from "./og-preview.mjs";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtimeEnvironment = await loadSelfHostedEnvironment(process.env);
@@ -108,6 +109,26 @@ const executionContext = {
   passThroughOnException: () => undefined,
 };
 
+const publicBaseUrl = runtimeEnvironment.EDGE_EVER_PUBLIC_BASE_URL;
+
+const renderSharePage = createSharePageRenderer({
+  fetchShare: async (token) => {
+    const response = await fetchEdgeEverApp(
+      new Request(`http://internal/api/public/shares/${encodeURIComponent(token)}`),
+      env,
+      executionContext,
+    );
+    if (!response.ok) return null; // locked, missing, or errored → plain shell
+    const body = await response.json();
+    return body?.share ?? null;
+  },
+  readIndexHtml: () => readFile(join(webDirectory, "index.html"), "utf8"),
+  describe: (share) => {
+    const markdown = typeof share?.contentMarkdown === "string" ? share.contentMarkdown : "";
+    return markdown.replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/[*_`#>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 150);
+  },
+});
+
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
@@ -149,10 +170,23 @@ const server = Bun.serve({
   // first streaming token. Keep the connection alive within Bun's supported range.
   idleTimeout: config.idleTimeout,
   async fetch(request) {
-    const pathname = new URL(request.url).pathname;
+    const url = new URL(request.url);
+    const pathname = url.pathname;
     if (pathname.startsWith("/api/") || pathname === "/mcp" || pathname.startsWith("/mcp/")) {
       return fetchEdgeEverApp(request, env, executionContext);
     }
+
+    const shareMatch = /^\/share\/([^/]+)\/?$/.exec(pathname);
+    if (shareMatch) {
+      const host = publicBaseUrl
+        || `${request.headers.get("x-forwarded-proto") || "https"}://${request.headers.get("x-forwarded-host") || request.headers.get("host") || url.host}`;
+      const shareUrl = `${host.replace(/\/+$/, "")}${pathname}`;
+      const html = await renderSharePage(shareMatch[1], shareUrl);
+      if (html) {
+        return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+      }
+    }
+
     return serveStatic(request);
   },
 });
