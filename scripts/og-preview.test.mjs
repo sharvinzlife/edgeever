@@ -99,3 +99,34 @@ describe("toPublicImageUrl", () => {
 
   test("null src yields null", () => expect(toPublicImageUrl(null, "tok", "https://notes.example")).toBeNull());
 });
+
+import { createSharePageRenderer } from "./og-preview.mjs";
+
+const shell = "<html><head><title>EdgeEver</title></head><body><div id=root></div></body></html>";
+const renderer = (share) => createSharePageRenderer({
+  fetchShare: async () => share,
+  readIndexHtml: async () => shell,
+  describe: (s) => String(s?.contentMarkdown ?? "").slice(0, 150),
+});
+
+describe("createSharePageRenderer", () => {
+  test("injects og tags for an unlocked share with an image", async () => {
+    const html = await renderer({
+      title: "T", contentMarkdown: "body text",
+      contentJson: doc([A]), tags: [],
+    })("tok", "https://notes.example/share/tok");
+    expect(html).toContain('<meta property="og:title" content="T">');
+    expect(html).toContain("og:image");
+    expect(html).toContain("/api/public/shares/tok/resources/res_aaa/blob");
+    expect(html.indexOf("<meta")).toBeGreaterThan(html.indexOf("<head>"));
+  });
+
+  test("returns null (plain shell) when the share is missing or locked", async () => {
+    expect(await renderer(null)("tok", "https://notes.example/share/tok")).toBeNull();
+  });
+
+  test("emits no og:image when the note has no image", async () => {
+    const html = await renderer({ title: "T", contentJson: doc([]), tags: [] })("tok", "https://notes.example/share/tok");
+    expect(html).not.toContain("og:image");
+  });
+});

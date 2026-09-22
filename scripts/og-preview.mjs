@@ -83,3 +83,32 @@ export const toPublicImageUrl = (src, token, baseUrl) => {
   if (/^https?:\/\//i.test(path)) return path;
   return `${String(baseUrl).replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 };
+
+/** Inject a meta block immediately before the closing </head>. */
+export const injectMeta = (indexHtml, metaBlock) =>
+  indexHtml.includes("</head>")
+    ? indexHtml.replace("</head>", `${metaBlock}\n</head>`)
+    : `${metaBlock}\n${indexHtml}`;
+
+/**
+ * Build a share-page renderer. Dependencies are injected so this is testable
+ * without a running server.
+ */
+export const createSharePageRenderer = ({ fetchShare, readIndexHtml, describe }) =>
+  async (token, shareUrl) => {
+    let share = null;
+    try {
+      share = await fetchShare(token);
+    } catch {
+      return null; // never let a preview failure break the page
+    }
+    if (!share) return null;
+    const coverSrc = resolveCoverSrc(share);
+    const meta = buildMetaBlock({
+      title: share.title || "EdgeEver",
+      description: describe(share),
+      imageUrl: toPublicImageUrl(coverSrc, token, new URL(shareUrl).origin),
+      shareUrl,
+    });
+    return injectMeta(await readIndexHtml(), meta);
+  };
