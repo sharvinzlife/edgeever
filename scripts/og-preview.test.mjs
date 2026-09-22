@@ -36,3 +36,66 @@ describe("buildMetaBlock", () => {
     expect(html).toContain("&lt;img");
   });
 });
+
+import { collectImageSrcs, resolveCoverSrc, resourceIdOf, toPublicImageUrl } from "./og-preview.mjs";
+
+const A = "/api/v1/resources/res_aaa/blob";
+const B = "/api/v1/resources/res_bbb/blob";
+const doc = (srcs) => ({
+  type: "doc",
+  content: [{ type: "paragraph", content: srcs.map((src) => ({ type: "image", attrs: { src } })) }],
+});
+
+describe("collectImageSrcs", () => {
+  test("returns image srcs in document order, including gallery items", () => {
+    const d = {
+      type: "doc",
+      content: [
+        { type: "image", attrs: { src: A } },
+        { type: "edgeeverImageGallery", content: [{ type: "image", attrs: { src: B } }] },
+      ],
+    };
+    expect(collectImageSrcs(d)).toEqual([A, B]);
+  });
+
+  test("ignores nodes without a src and non-objects", () => {
+    expect(collectImageSrcs({ type: "doc", content: [{ type: "image", attrs: {} }, null] })).toEqual([]);
+  });
+});
+
+describe("resourceIdOf", () => {
+  test("extracts the resource id", () => expect(resourceIdOf(A)).toBe("res_aaa"));
+  test("returns null for an external url", () => expect(resourceIdOf("https://cdn/x.jpg")).toBeNull());
+});
+
+describe("resolveCoverSrc", () => {
+  test("defaults to the first image", () => {
+    expect(resolveCoverSrc({ tags: [], contentJson: doc([A, B]) })).toBe(A);
+  });
+
+  test("a cover tag naming an id overrides the first image", () => {
+    expect(resolveCoverSrc({ tags: ["prompts", "cover:res_bbb"], contentJson: doc([A, B]) })).toBe(B);
+  });
+
+  test("a cover tag naming a missing image falls back to the first image", () => {
+    expect(resolveCoverSrc({ tags: ["cover:res_zzz"], contentJson: doc([A, B]) })).toBe(A);
+  });
+
+  test("no images returns null", () => {
+    expect(resolveCoverSrc({ tags: [], contentJson: doc([]) })).toBeNull();
+  });
+});
+
+describe("toPublicImageUrl", () => {
+  test("maps an uploaded resource to the public share blob url", () => {
+    expect(toPublicImageUrl(A, "tok", "https://notes.example")).toBe(
+      "https://notes.example/api/public/shares/tok/resources/res_aaa/blob",
+    );
+  });
+
+  test("uses an external url verbatim", () => {
+    expect(toPublicImageUrl("https://cdn/x.jpg", "tok", "https://notes.example")).toBe("https://cdn/x.jpg");
+  });
+
+  test("null src yields null", () => expect(toPublicImageUrl(null, "tok", "https://notes.example")).toBeNull());
+});
