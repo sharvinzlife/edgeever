@@ -130,3 +130,14 @@ describe("createSharePageRenderer", () => {
     expect(html).not.toContain("og:image");
   });
 });
+
+describe("createSharePageRenderer failure isolation", () => {
+  test("resolves to null when readIndexHtml throws", async () => {
+    const broken = createSharePageRenderer({
+      fetchShare: async () => ({ title: "T", contentJson: doc([A]), tags: [] }),
+      readIndexHtml: async () => { throw new Error("index.html is missing"); },
+      describe: () => "text",
+    });
+    expect(await broken("tok", "https://notes.example/share/tok")).toBeNull();
+  });
+});

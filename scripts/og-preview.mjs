@@ -96,19 +96,18 @@ export const injectMeta = (indexHtml, metaBlock) =>
  */
 export const createSharePageRenderer = ({ fetchShare, readIndexHtml, describe }) =>
   async (token, shareUrl) => {
-    let share = null;
     try {
-      share = await fetchShare(token);
+      const share = await fetchShare(token);
+      if (!share) return null;
+      const coverSrc = resolveCoverSrc(share);
+      const meta = buildMetaBlock({
+        title: share.title || "EdgeEver",
+        description: describe(share),
+        imageUrl: toPublicImageUrl(coverSrc, token, new URL(shareUrl).origin),
+        shareUrl,
+      });
+      return injectMeta(await readIndexHtml(), meta);
     } catch {
       return null; // never let a preview failure break the page
     }
-    if (!share) return null;
-    const coverSrc = resolveCoverSrc(share);
-    const meta = buildMetaBlock({
-      title: share.title || "EdgeEver",
-      description: describe(share),
-      imageUrl: toPublicImageUrl(coverSrc, token, new URL(shareUrl).origin),
-      shareUrl,
-    });
-    return injectMeta(await readIndexHtml(), meta);
   };
