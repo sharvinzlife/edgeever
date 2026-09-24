@@ -162,10 +162,15 @@ describe("describeShare", () => {
 });
 
 describe("toPublicImageUrl", () => {
-  test("maps an uploaded resource to the public share blob url", () => {
+  test("maps an uploaded resource to the public share preview url", () => {
     expect(toPublicImageUrl(A, "tok", "https://notes.example")).toBe(
-      "https://notes.example/api/public/shares/tok/resources/res_aaa/blob",
+      "https://notes.example/api/public/shares/tok/resources/res_aaa/preview",
     );
+  });
+
+  test("never points at the full-size blob, which WhatsApp may refuse to render", () => {
+    const url = toPublicImageUrl(A, "tok", "https://notes.example");
+    expect(url).not.toContain("/blob");
   });
 
   test("uses an external url verbatim", () => {
@@ -192,7 +197,8 @@ describe("createSharePageRenderer", () => {
     })("tok", "https://notes.example/share/tok");
     expect(html).toContain('<meta property="og:title" content="T">');
     expect(html).toContain("og:image");
-    expect(html).toContain("/api/public/shares/tok/resources/res_aaa/blob");
+    expect(html).toContain("/api/public/shares/tok/resources/res_aaa/preview");
+    expect(html).not.toContain("/resources/res_aaa/blob");
     expect(html.indexOf("<meta")).toBeGreaterThan(html.indexOf("<head>"));
   });
 

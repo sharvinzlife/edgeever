@@ -9,6 +9,7 @@ import { hashPassword, randomToken, verifyPassword } from "./auth-crypto";
 import { parseByteRange, rangeNotSatisfiable } from "./byte-range";
 import { createId, isoNow, parseJsonArray } from "./entity-utils";
 import { apiError, notFound } from "./http-errors";
+import { getCachedPreview, previewCacheKey, putCachedPreview } from "./image-preview-contract";
 import { resolveObjectStorage } from "./object-storage";
 import { getAuditActor, getWorkspaceId, requireScopes, requireUser } from "./request-auth";
 import { contentDispositionAttachment, contentDispositionInline } from "./resource-service";
@@ -83,6 +84,15 @@ const mapMemoShare = (row: MemoShareRow, password?: string): MemoShare => ({
 const contentDisposition = (kind: SharedResourceRow["kind"], mimeType: string | null, filename: string | null) => {
   const inline = kind === "image" || isPdfAttachment(mimeType, filename) || Boolean(resolvePlayableMediaMimeType(mimeType, filename));
   return inline ? contentDispositionInline(filename) : contentDispositionAttachment(filename);
+};
+
+// The cache and crawler headers every public-share resource response carries.
+// Applied last so object metadata cannot overwrite them.
+const withPreviewHeaders = (headers: Headers) => {
+  headers.set("Cache-Control", "private, no-store");
+  headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+  headers.set("X-Content-Type-Options", "nosniff");
+  return headers;
 };
 
 const normalizeShareToken = (value: string) => {
@@ -280,6 +290,75 @@ export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
     headers.set("X-Content-Type-Options", "nosniff");
     headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
     return new Response(object.body, { headers, status: byteRange.kind === "range" ? 206 : 200 });
+  });
+
+  // A preview-sized derivative of a shared image, for `og:image`.
+  //
+  // Why (2026-09-23): crawlers are fussy about image size. A share whose cover
+  // was the 1,073,160-byte 1440x1800 photo `/sd` attached previewed in WhatsApp
+  // with a title and description but no image, while every cover under ~540 KB
+  // previewed fine. The original resource is never modified — this route serves
+  // a derivative, or the original when no derivative can be produced.
+  app.get("/api/public/shares/:token/resources/:resourceId/preview", async (c) => {
+    const token = normalizeShareToken(c.req.param("token"));
+    if (!token) return notFound(c, "Shared resource not found");
+
+    const resource = await c.env.storage.db.prepare(
+      `SELECT r.object_key, r.storage_config_id, r.kind, r.mime_type, r.filename, r.byte_size,
+              ms.workspace_id, ms.password_hash
+       FROM memo_shares ms
+       INNER JOIN memos m ON m.id = ms.memo_id AND m.workspace_id = ms.workspace_id
+       INNER JOIN resources r ON r.memo_id = m.id
+       WHERE ms.token = ? AND r.id = ? AND m.is_deleted = 0 AND r.is_deleted = 0
+       LIMIT 1`
+    ).bind(token, c.req.param("resourceId")).first<SharedResourceRow>();
+    if (!resource) return notFound(c, "Shared resource not found");
+    // Same gate as /blob: a locked share serves no image to a crawler at all.
+    if (resource.password_hash && !(await allowPasswordProtectedShare(c, token, resource.workspace_id, resource.password_hash))) {
+      return sharePasswordRequired(c);
+    }
+
+    const source = await resolveObjectStorage(c.env, resource.storage_config_id);
+    const object = await source.store.get(resource.object_key);
+    if (!object) return notFound(c, "Shared resource not found");
+
+    const cacheKey = previewCacheKey(c.req.param("resourceId"), resource.byte_size);
+    const cached = resource.kind === "image" ? getCachedPreview(cacheKey) : undefined;
+
+    const jpegResponse = (bytes: Uint8Array) => {
+      const headers = new Headers();
+      headers.set("Content-Type", "image/jpeg");
+      headers.set("Content-Length", String(bytes.byteLength));
+      // Uint8Array is a valid body at runtime; the cast is the same lib-typing
+      // friction handled in s3-compatible-storage-adapter.ts.
+      return new Response(bytes as BodyInit, { headers: withPreviewHeaders(headers) });
+    };
+
+    const serveOriginal = (body: ReadableStream | Uint8Array) => {
+      const headers = new Headers();
+      object.writeHttpMetadata(headers);
+      headers.set("Content-Type", resource.mime_type ?? headers.get("Content-Type") ?? "application/octet-stream");
+      headers.set("Content-Length", String(resource.byte_size));
+      return new Response(body as BodyInit, { headers: withPreviewHeaders(headers) });
+    };
+
+    if (cached) return jpegResponse(cached.bytes);
+
+    if (resource.kind === "image" && c.env.renderPreview) {
+      const original = new Uint8Array(await new Response(object.body).arrayBuffer());
+      const rendered = await c.env.renderPreview(original);
+      if (rendered) {
+        putCachedPreview(cacheKey, rendered);
+        return jpegResponse(rendered.bytes);
+      }
+      // No derivative could be produced — serve exactly what /blob serves, so a
+      // crawler never receives a broken image. The renderer logged the reason.
+      return serveOriginal(original);
+    }
+
+    // Not an image, or no renderer injected (the Cloudflare Worker): stream the
+    // resource the way /blob does.
+    return serveOriginal(object.body as ReadableStream);
   });
 };
 

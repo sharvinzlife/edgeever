@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { globSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { globSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Hono } from "hono";
 import { hashPassword } from "./auth-crypto.ts";
+import { clearPreviewCache, getCachedPreview, previewCacheKey } from "./image-preview-contract.ts";
+import { renderPreview } from "./image-preview.ts";
 import { registerMemoShareRoutes, registerPublicShareRoutes } from "./share-routes.ts";
 
 class SqliteD1PreparedStatement {
@@ -446,6 +451,187 @@ describe("authenticated share resolve", () => {
     expect(await response.json()).toEqual({
       error: { code: "forbidden", message: "Missing required scope: read:memos" },
     });
+    sqlite.close();
+  });
+});
+
+// The /preview derivative exists because WhatsApp drops an og:image somewhere
+// over ~600 KB. These tests use the real libvips binary, like image-preview's.
+const makeJpegBytes = (width, height) => {
+  const dir = mkdtempSync(join(tmpdir(), "edgeever-route-"));
+  const raw = join(dir, "a.v");
+  const out = join(dir, "a.jpg");
+  const run = (args) => {
+    const result = spawnSync("vips", args, { encoding: "buffer" });
+    if (result.status !== 0) {
+      throw new Error(`vips ${args.join(" ")} failed: ${result.stderr?.toString() ?? ""}`);
+    }
+  };
+  run(["gaussnoise", raw, String(width), String(height), "--sigma", "20", "--seed", "42"]);
+  run(["jpegsave", raw, out, "--Q", "95"]);
+  const bytes = new Uint8Array(readFileSync(out));
+  rmSync(dir, { recursive: true, force: true });
+  return bytes;
+};
+
+const serveResource = (environment, bytes, renderer = renderPreview) => {
+  environment.storage.resources = {
+    get: async () => ({
+      body: new Blob([bytes]).stream(),
+      size: bytes.byteLength,
+      writeHttpMetadata: () => {},
+    }),
+  };
+  // The self-hosted server injects the libvips renderer; the Worker injects none.
+  if (renderer) environment.renderPreview = renderer;
+};
+
+describe("public share image preview", () => {
+  test("serves a resized baseline JPEG instead of the full-size upload", async () => {
+    clearPreviewCache();
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const original = makeJpegBytes(1440, 1800);
+    sqlite.query(
+      `INSERT INTO resources (id, memo_id, object_key, kind, mime_type, filename, byte_size)
+       VALUES (?, ?, ?, 'image', 'image/jpeg', 'photo.jpg', ?)`,
+    ).run("res_img", "memo_source", "img-key", original.byteLength);
+    serveResource(environment, original);
+    const app = new Hono();
+    registerPublicShareRoutes(app);
+
+    const response = await app.request(
+      `/api/public/shares/${sourceToken}/resources/res_img/preview`,
+      {},
+      environment,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/jpeg");
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow, noarchive");
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    expect(bytes.byteLength).toBeLessThan(original.byteLength);
+    expect(bytes.byteLength).toBeLessThanOrEqual(300 * 1024);
+    // JPEG SOI marker — a real image, not an error page.
+    expect(bytes[0]).toBe(0xff);
+    expect(bytes[1]).toBe(0xd8);
+    // The derivative is cached, so the next crawler hit skips the resize.
+    expect(getCachedPreview(previewCacheKey("res_img", original.byteLength))).toBeDefined();
+    sqlite.close();
+  });
+
+  test("falls back to the original bytes when the image cannot be decoded", async () => {
+    clearPreviewCache();
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const original = new TextEncoder().encode("not really an image");
+    sqlite.query(
+      `INSERT INTO resources (id, memo_id, object_key, kind, mime_type, filename, byte_size)
+       VALUES (?, ?, ?, 'image', 'image/jpeg', 'broken.jpg', ?)`,
+    ).run("res_broken", "memo_source", "broken-key", original.byteLength);
+    serveResource(environment, original);
+    const app = new Hono();
+    registerPublicShareRoutes(app);
+
+    const response = await app.request(
+      `/api/public/shares/${sourceToken}/resources/res_broken/preview`,
+      {},
+      environment,
+    );
+
+    // A crawler must never receive a broken image: same bytes as /blob would give.
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/jpeg");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(original);
+    sqlite.close();
+  });
+
+  test("serves the original when no renderer is injected, as in the Cloudflare Worker", async () => {
+    clearPreviewCache();
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const original = makeJpegBytes(1440, 1800);
+    sqlite.query(
+      `INSERT INTO resources (id, memo_id, object_key, kind, mime_type, filename, byte_size)
+       VALUES (?, ?, ?, 'image', 'image/jpeg', 'photo.jpg', ?)`,
+    ).run("res_worker", "memo_source", "worker-key", original.byteLength);
+    serveResource(environment, original, null);
+    const app = new Hono();
+    registerPublicShareRoutes(app);
+
+    const response = await app.request(
+      `/api/public/shares/${sourceToken}/resources/res_worker/preview`,
+      {},
+      environment,
+    );
+
+    // No libvips on the Worker, so nothing is resized and nothing is broken.
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/jpeg");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(original);
+    sqlite.close();
+  });
+
+  test("streams a non-image resource unchanged", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const original = new Uint8Array([1, 2, 3, 4, 5]);
+    sqlite.query(
+      `INSERT INTO resources (id, memo_id, object_key, kind, mime_type, filename, byte_size)
+       VALUES (?, ?, ?, 'attachment', 'application/pdf', 'doc.pdf', ?)`,
+    ).run("res_pdf", "memo_source", "pdf-key", original.byteLength);
+    serveResource(environment, original);
+    const app = new Hono();
+    registerPublicShareRoutes(app);
+
+    const response = await app.request(
+      `/api/public/shares/${sourceToken}/resources/res_pdf/preview`,
+      {},
+      environment,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/pdf");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(original);
+    sqlite.close();
+  });
+
+  test("serves nothing for a locked share, exactly like /blob", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const original = makeJpegBytes(400, 300);
+    sqlite.query("UPDATE memo_shares SET password_hash = ? WHERE token = ?")
+      .run(await hashPassword("secretPwd"), sourceToken);
+    sqlite.query(
+      `INSERT INTO resources (id, memo_id, object_key, kind, mime_type, filename, byte_size)
+       VALUES (?, ?, ?, 'image', 'image/jpeg', 'photo.jpg', ?)`,
+    ).run("res_locked", "memo_source", "locked-key", original.byteLength);
+    serveResource(environment, original);
+    const app = new Hono();
+    registerPublicShareRoutes(app);
+
+    const response = await app.request(
+      `/api/public/shares/${sourceToken}/resources/res_locked/preview`,
+      {},
+      environment,
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: { code: "share_password_required", message: "Password required to view this shared note" },
+    });
+    sqlite.close();
+  });
+
+  test("404s for an unknown resource or a malformed token", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const app = new Hono();
+    registerPublicShareRoutes(app);
+
+    for (const path of [
+      `/api/public/shares/${sourceToken}/resources/res_missing/preview`,
+      "/api/public/shares/short/resources/res_missing/preview",
+    ]) {
+      const response = await app.request(path, {}, environment);
+      expect(response.status).toBe(404);
+    }
     sqlite.close();
   });
 });

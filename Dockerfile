@@ -46,6 +46,14 @@ LABEL org.opencontainers.image.title="EdgeEver" \
       org.opencontainers.image.description="Self-hosted notes and knowledge management" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 
+# libvips CLI, for the preview-sized og:image derivatives served by
+# /api/public/shares/:token/resources/:id/preview. An Alpine package rather than
+# `sharp` because this stage ships one bundled server file and no npm dependency
+# tree at all, so a native npm module could not be loaded here. Pinned to match
+# the pinned Alpine base (3.22) — `vips-tools` is built for musl and aarch64,
+# which the on-host OCI build needs.
+RUN apk add --no-cache vips-tools=8.16.1-r0
+
 COPY --from=build /app/dist/self-hosted/self-hosted-server.js ./scripts/self-hosted-server.js
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 COPY migrations ./migrations

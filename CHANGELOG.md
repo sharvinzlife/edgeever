@@ -16,6 +16,71 @@ is the record of what changed.
 
 ---
 
+## v1.81.0-fork.4
+
+Base: upstream [`v1.81.0`](https://github.com/tianma-if/edgeever/releases/tag/v1.81.0).
+
+Fixes a share that previewed with a title and description but **no image**.
+
+### Fixed
+
+- **`og:image` now points at a preview-sized derivative instead of the full-size upload.** One share
+  previewed without an image while every other share previewed fine. Measured: its cover was
+  **1,073,160 bytes** (1440x1800, progressive JPEG — the Instagram photo `/sd` attached at full size),
+  while the shares that worked measured 163,613 and 348,310 bytes. WhatsApp is widely reported to drop
+  `og:image` somewhere above ~600 KB (undocumented, not a regression in this fork). A 1.07 MB cover is
+  simply too large to unfurl.
+
+### Added
+
+- **`GET /api/public/shares/:token/resources/:id/preview`** — a preview-sized derivative, with exactly
+  the same share-token and password rules as the `/blob` route it sits beside. Locked shares serve no
+  image, as before. Non-image resources are streamed through untouched.
+- **The derivative is at most 1200px on the long edge, baseline JPEG, targeting 300 KB.** Quality steps
+  down 82 → 70 → 60 and stops at the first result within target; the hard fail-safe is 600 KB. For the
+  failing share the ladder lands at Q70 / 213,549 bytes / 960x1200.
+- **An in-memory cache** keyed by resource id plus source size, so a crawler hitting the same share
+  repeatedly pays for one resize rather than one per unfurl. Bounded at 32 entries (~10 MB).
+- **`image-preview-contract.ts`** — the platform-neutral half (constants, types, cache). The libvips
+  implementation lives in `image-preview.ts` and reaches the route as an **injected `renderPreview`
+  binding**, the same way `storage` and `publicNetworkFetch` do. This is not cosmetic: `apps/api` is
+  bundled for the Cloudflare Worker too, and importing `node:child_process` there fails the Worker
+  build. Where no renderer is injected — the Worker — the route serves the original bytes, which is
+  exactly the previous behaviour.
+
+### Changed
+
+- **`vips-tools` is installed in the runtime stage, pinned to `8.16.1-r0`** to match the pinned Alpine
+  3.22 base. libvips rather than `sharp` because the runtime ships a single bundled server file with no
+  npm dependency tree at all, so a native npm module could not be loaded there; an Alpine package adds
+  a real binary with no bundling step. `vips-tools` is built for musl and aarch64, which is what the
+  on-host OCI build needs.
+
+### Notes
+
+- **The original upload and the note are never modified.** `/blob` still serves the untouched bytes
+  (verified: 1,526,803 in, 1,526,803 out), and `/sd` still attaches photos at full size.
+- **Transparency is flattened onto white**, not black. libvips composites a dropped alpha channel onto
+  black by default, so a transparent logo would have previewed as a black box. (`jpegsave
+  --background` does *not* do this — it is a save option, not a composite.)
+- **Resizing failure is never a broken image.** `renderPreview` logs and returns null; the route then
+  serves exactly what `/blob` serves.
+- A cover already under the caps is still re-encoded at up to 1200px. The derivative is the contract;
+  the ladder is what keeps it small.
+
+### Testing
+
+- `bun test` — **2153 pass, 1 fail** with HEAD exactly on the fork tag, the failure being upstream's
+  `build-metadata` tag-only check described under [Versioning](#versioning); **2154 pass, 0 fail** one
+  commit off it. 19 tests added.
+- `bun run typecheck` — clean.
+- **Local proof** (real server, real share, `WhatsApp/2.23.20.0`): source 1,526,803 bytes 1440x1800
+  progressive → `og:image` at the `/preview` route → `http_code=200 size_download=213549
+  content_type=image/jpeg pixel_dims=960x1200 jpeg_scan=baseline`; `/blob` unchanged at 1,526,803.
+- **Live proof** on the originally-failing share and two that already worked — see the release notes.
+
+---
+
 ## v1.81.0-fork.3
 
 Base: upstream [`v1.81.0`](https://github.com/tianma-if/edgeever/releases/tag/v1.81.0).

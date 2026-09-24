@@ -295,11 +295,16 @@ EdgeEver is self-hosted software. Except for official demo instances, project ma
 
 > **Unofficial fork.** This repository is a fork of [`tianma-if/edgeever`](https://github.com/tianma-if/edgeever). It is not affiliated with, authorized, sponsored, or endorsed by the EdgeEver maintainers. The EdgeEver name and logo remain theirs — see [Trademark and Brand Use](#trademark-and-brand-use) above.
 
-🆕 **[v1.81.0-fork.3](CHANGELOG.md#v1810-fork3)** · base upstream `v1.81.0`
+🆕 **[v1.81.0-fork.4](CHANGELOG.md#v1810-fork4)** · base upstream `v1.81.0`
 
 Share links now preview with the note's **own cover image** instead of the app icon: metadata is
 injected server-side for crawlers that do not run JavaScript, the default cover prefers an image a
 crawler can actually render, and a `cover:<src>` tag pins the preview to one specific image.
+
+`fork.4` fixes a share that previewed with a title and description but no image: its cover was a
+1,073,160-byte photo, and WhatsApp drops an `og:image` somewhere above ~600 KB. `og:image` now points
+at a `/preview` derivative — at most 1200px on the long edge, baseline JPEG, targeting 300 KB, cached
+and resized with libvips. The original upload is never touched; `/blob` still serves it unchanged.
 
 `fork.3` adds the read path that makes choosing that image scriptable: `GET /api/v1/shares/:token`
 resolves a share link to its note (`memoId`, `title`, `contentJson`, `tags`, `passwordProtected`) for

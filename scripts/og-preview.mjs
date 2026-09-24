@@ -93,12 +93,21 @@ export const resolveCoverSrc = (share) => {
   return defaultCoverSrc(images);
 };
 
-/** Map a note image src to a URL a crawler can fetch without auth. */
+/**
+ * Map a note image src to a URL a crawler can fetch without auth.
+ *
+ * Uploaded images point at the `/preview` derivative, never at `/blob`. The
+ * original is whatever `/sd` attached — a 1440x1800 Instagram photo can be over
+ * 1 MB, and WhatsApp drops an `og:image` somewhere above ~600 KB (undocumented),
+ * previewing the share with a title and description but no image. `/preview`
+ * resizes on demand and falls back to serving the original, so this URL is
+ * always fetchable.
+ */
 export const toPublicImageUrl = (src, token, baseUrl) => {
   if (!src) return null;
   const id = resourceIdOf(src);
   const path = id
-    ? `/api/public/shares/${encodeURIComponent(token)}/resources/${encodeURIComponent(id)}/blob`
+    ? `/api/public/shares/${encodeURIComponent(token)}/resources/${encodeURIComponent(id)}/preview`
     : src;
   if (/^https?:\/\//i.test(path)) return path;
   return `${String(baseUrl).replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;

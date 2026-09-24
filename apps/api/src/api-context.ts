@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import type { CloudflareStorageBindings } from "./cloudflare-storage-adapter";
+import type { PreviewRenderer } from "./image-preview-contract";
 import type { StorageAdapter } from "./storage-contract";
 
 export type Bindings = {
@@ -7,6 +8,13 @@ export type Bindings = {
   publicNetworkFetch?: (input: string, init: RequestInit) => Promise<Response>;
   /** The only persistence dependency exposed to application code. */
   storage: StorageAdapter;
+  /**
+   * Runtime driver for `og:image` preview derivatives. Self-hosted only: making
+   * one needs libvips, so the Worker injects nothing and the preview route falls
+   * back to serving the original bytes. Injecting it also keeps
+   * `node:child_process` out of the Worker bundle.
+   */
+  renderPreview?: PreviewRenderer;
   EDGE_EVER_AUTH_USERNAME?: string;
   EDGE_EVER_RUNTIME?: string;
   EDGE_EVER_CONTAINER_IMAGE?: string;

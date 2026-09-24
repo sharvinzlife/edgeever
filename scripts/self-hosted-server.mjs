@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { hasBootstrapCredential } from "../apps/api/src/auth-bootstrap.ts";
 import { isUnauthenticatedAccessEnabled } from "../apps/api/src/auth-state.ts";
 import { fetchEdgeEverApp } from "../apps/api/src/index.ts";
+import { renderPreview } from "../apps/api/src/image-preview.ts";
 import { nodePublicFetch } from "../apps/api/src/node-public-network.ts";
 import { createSelfHostedStorageAdapter } from "../apps/api/src/self-hosted-storage-adapter.ts";
 import { resolveSelfHostedConfig } from "./self-hosted-config.mjs";
@@ -82,6 +83,9 @@ const storage = config.storageBackend === "s3"
 const env = {
   storage,
   publicNetworkFetch: nodePublicFetch,
+  // The libvips-backed og:image derivative. Injected here rather than imported by
+  // the route so the Cloudflare Worker bundle never pulls in node:child_process.
+  renderPreview,
   EDGE_EVER_AUTH_USERNAME: runtimeEnvironment.EDGE_EVER_AUTH_USERNAME ?? "admin",
   EDGE_EVER_RUNTIME: "self-hosted-bun",
   EDGE_EVER_CONTAINER_IMAGE: runtimeEnvironment.EDGE_EVER_CONTAINER_IMAGE,
