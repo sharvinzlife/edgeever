@@ -339,3 +339,113 @@ describe("password-protected memo shares", () => {
     sqlite.close();
   });
 });
+
+// Mirrors the shape authenticateApiToken builds (auth-service.ts): an API token
+// is an "agent" auth, and hasScopes only exempts kind === "user".
+const agentAuth = (scopes) => ({
+  kind: "agent",
+  actorType: "agent",
+  actorId: "tok_bot",
+  username: "bot",
+  displayName: "bot",
+  scopes,
+  workspaceId: "ws_member",
+  role: "member",
+  tokenId: "tok_bot",
+});
+
+const createAgentShareApp = (environment, scopes) => {
+  const app = new Hono();
+  app.use("/api/v1/*", async (c, next) => {
+    c.set("auth", agentAuth(scopes));
+    await next();
+  });
+  registerPublicShareRoutes(app);
+  registerMemoShareRoutes(app);
+  return app;
+};
+
+describe("authenticated share resolve", () => {
+  test("resolves a share token to its note for an API token", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const app = createAgentShareApp(environment, ["read:memos"]);
+
+    const response = await app.request(`/api/v1/shares/${sourceToken}`, {}, environment);
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.share.memoId).toBe("memo_source");
+    expect(body.share.title).toBe("Source");
+    expect(body.share.contentJson.type).toBe("doc");
+    expect(Array.isArray(body.share.tags)).toBe(true);
+    expect(body.share.passwordProtected).toBe(false);
+    // The hash and the linked-memo token map must never leave the server.
+    expect(body.share).not.toHaveProperty("password");
+    expect(body.share).not.toHaveProperty("passwordHash");
+    expect(body.share).not.toHaveProperty("memoShareTokens");
+    sqlite.close();
+  });
+
+  test("resolves a password-protected share for the owner", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    sqlite.query("UPDATE memo_shares SET password_hash = ? WHERE token = ?")
+      .run(await hashPassword("secretPwd"), sourceToken);
+    const app = createAgentShareApp(environment, ["read:memos"]);
+
+    const publicResponse = await app.request(`/api/public/shares/${sourceToken}`, {}, environment);
+    expect(publicResponse.status).toBe(403);
+
+    const response = await app.request(`/api/v1/shares/${sourceToken}`, {}, environment);
+    expect(response.status).toBe(200);
+    expect((await response.json()).share.passwordProtected).toBe(true);
+    sqlite.close();
+  });
+
+  test("answers 404 for unknown, malformed and other-workspace tokens alike", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    sqlite.query("INSERT INTO workspaces (id, name, is_personal) VALUES (?, ?, 1)")
+      .run("ws_other", "Other workspace");
+    sqlite.query("INSERT INTO notebooks (id, workspace_id, name) VALUES (?, ?, ?)")
+      .run("nb_other", "ws_other", "Inbox");
+    sqlite.query("INSERT INTO memos (id, workspace_id, notebook_id, title) VALUES (?, ?, ?, ?)")
+      .run("memo_other", "ws_other", "nb_other", "Other");
+    sqlite.query("INSERT INTO memo_contents (memo_id, content_json, content_markdown, content_hash) VALUES (?, ?, '', ?)")
+      .run("memo_other", JSON.stringify({ type: "doc", content: [] }), "memo_other-hash");
+    const foreignToken = "f".repeat(43);
+    sqlite.query("INSERT INTO memo_shares (id, memo_id, workspace_id, token) VALUES (?, ?, ?, ?)")
+      .run("share_other", "memo_other", "ws_other", foreignToken);
+    const app = createAgentShareApp(environment, ["read:memos"]);
+
+    for (const token of ["z".repeat(43), "too-short", foreignToken]) {
+      const response = await app.request(`/api/v1/shares/${token}`, {}, environment);
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({
+        error: { code: "not_found", message: "Shared note not found" },
+      });
+    }
+    sqlite.close();
+  });
+
+  test("answers 404 once the note is deleted", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    sqlite.query("UPDATE memos SET is_deleted = 1 WHERE id = ?").run("memo_source");
+    const app = createAgentShareApp(environment, ["read:memos"]);
+
+    const response = await app.request(`/api/v1/shares/${sourceToken}`, {}, environment);
+    expect(response.status).toBe(404);
+    sqlite.close();
+  });
+
+  test("requires the read:memos scope for API tokens", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const app = createAgentShareApp(environment, ["write:memos"]);
+
+    const response = await app.request(`/api/v1/shares/${sourceToken}`, {}, environment);
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: { code: "forbidden", message: "Missing required scope: read:memos" },
+    });
+    sqlite.close();
+  });
+});

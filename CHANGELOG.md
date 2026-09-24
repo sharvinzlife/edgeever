@@ -16,6 +16,50 @@ is the record of what changed.
 
 ---
 
+## v1.81.0-fork.3
+
+Base: upstream [`v1.81.0`](https://github.com/tianma-if/edgeever/releases/tag/v1.81.0).
+
+Adds the read path the WhatsApp bot's `/cv` command needs. The `cover:` tag convention from `fork.1`
+already *works*; what was missing was any way for an API-token caller to learn which note a share link
+points at.
+
+### Added
+
+- **`GET /api/v1/shares/:token` — resolve a share token to its note.** Guarded by the `read:memos`
+  scope (an API token, not an interactive session — `requireUser` rejects tokens, and the bot
+  authenticates with a Bearer token). Returns
+  `{ share: { memoId, title, contentJson, tags, passwordProtected, updatedAt } }`.
+- **`contentJson` is the point of the endpoint.** No authenticated route returned the Tiptap document:
+  `GET /api/v1/memos/:id` answers Markdown only. Returning just `{ memoId }` would have forced the
+  caller to re-read the note through the *public* share route, which answers `403
+  share_password_required` on a locked share — and the instance owner is exactly the caller that
+  should not be blocked by its own password. One authenticated call returns everything the picker
+  needs, for locked shares included.
+- The response deliberately omits `memoShareTokens` (that map is keyed by *linked* notes, not this
+  one) and never exposes `password_hash` — only the `passwordProtected` boolean.
+
+### Notes
+
+- **Unknown, malformed and other-workspace tokens answer an identical `404`.** The lookup is scoped to
+  the caller's workspace, so the endpoint cannot be used to probe for tokens outside it.
+- **A tags-only `PATCH /api/v1/memos/:id` needs no edit session** (EdgeEver gates HTTP 428 on a
+  content update only), which is how `/cv` writes its `cover:` tag. Two consequences the bot has to
+  absorb, both verified in `apps/api/src/memo-service.ts`: the tag array is **replaced wholesale**
+  (`input.tags === undefined ? current : normalizeTags(input.tags)`), and `normalizeTags` caps the list
+  at **24** tags — so the cover tag must be written first, not appended. A tags-only PATCH also still
+  bumps `revision` and records a revision snapshot even though the content is byte-identical, so a
+  desktop or mobile client holding an edit session on that note will answer `409` on its next save and
+  must reload.
+
+### Testing
+
+- `bun test apps/api/src/share-routes.test.mjs` — 12 pass, 0 fail (5 new: owner resolve, locked-share
+  resolve, unknown/malformed/foreign-workspace 404, deleted-note 404, missing-scope 403).
+- `bun run typecheck` — clean.
+
+---
+
 ## v1.81.0-fork.2
 
 Base: upstream [`v1.81.0`](https://github.com/tianma-if/edgeever/releases/tag/v1.81.0).

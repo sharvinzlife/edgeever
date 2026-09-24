@@ -10,7 +10,7 @@ import { parseByteRange, rangeNotSatisfiable } from "./byte-range";
 import { createId, isoNow, parseJsonArray } from "./entity-utils";
 import { apiError, notFound } from "./http-errors";
 import { resolveObjectStorage } from "./object-storage";
-import { getAuditActor, getWorkspaceId, requireUser } from "./request-auth";
+import { getAuditActor, getWorkspaceId, requireScopes, requireUser } from "./request-auth";
 import { contentDispositionAttachment, contentDispositionInline } from "./resource-service";
 import {
   createShareAccessCookieValue,
@@ -37,6 +37,17 @@ type PublicMemoShareRow = {
   title: string | null;
   content_json: string;
   content_markdown: string;
+  tags_json: string;
+  updated_at: string;
+  password_hash: string | null;
+};
+// An authenticated resolve of a share token to its note. Deliberately carries
+// content_json (no authenticated route exposes the Tiptap doc otherwise) and a
+// passwordProtected boolean rather than the hash.
+type ResolvedShareRow = {
+  memo_id: string;
+  title: string | null;
+  content_json: string;
   tags_json: string;
   updated_at: string;
   password_hash: string | null;
@@ -388,5 +399,40 @@ export const registerMemoShareRoutes = (app: Hono<AppEnv>) => {
     const actor = getAuditActor(c);
     await audit(c.env.storage.db, actor.actorType, actor.actorId, "memo.share_revoke", "memo", memoId, {});
     return c.json({ ok: true });
+  });
+
+  // Resolve a share token to its note, for trusted API-token callers (the
+  // WhatsApp bot's /cv command). Not requireUser: that rejects API tokens.
+  // The owner is exempt from the share password, so a locked share still
+  // resolves here even though the public route would 403.
+  app.get("/api/v1/shares/:token", async (c) => {
+    const denied = requireScopes(c, "read:memos");
+    if (denied) return denied;
+
+    const token = normalizeShareToken(c.req.param("token"));
+    if (!token) return notFound(c, "Shared note not found");
+
+    const row = await c.env.storage.db.prepare(
+      `SELECT ms.memo_id, m.title, mc.content_json, m.tags_json, m.updated_at, ms.password_hash
+       FROM memo_shares ms
+       INNER JOIN memos m ON m.id = ms.memo_id AND m.workspace_id = ms.workspace_id
+       INNER JOIN memo_contents mc ON mc.memo_id = m.id
+       WHERE ms.token = ? AND ms.workspace_id = ? AND m.is_deleted = 0
+       LIMIT 1`
+    ).bind(token, getWorkspaceId(c)).first<ResolvedShareRow>();
+    // Unknown, malformed and other-workspace tokens answer identically, so this
+    // cannot be used to probe for tokens outside the caller's workspace.
+    if (!row) return notFound(c, "Shared note not found");
+
+    return c.json({
+      share: {
+        memoId: row.memo_id,
+        title: row.title,
+        contentJson: JSON.parse(row.content_json) as TiptapDoc,
+        tags: parseJsonArray(row.tags_json),
+        passwordProtected: Boolean(row.password_hash),
+        updatedAt: row.updated_at,
+      },
+    });
   });
 };
