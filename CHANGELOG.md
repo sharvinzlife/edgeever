@@ -16,6 +16,45 @@ is the record of what changed.
 
 ---
 
+## v1.81.0-fork.5
+
+Base: upstream [`v1.81.0`](https://github.com/tianma-if/edgeever/releases/tag/v1.81.0).
+
+Fixes a share whose media is a **video** previewing with a title and description but no picture.
+
+### Fixed
+
+- **A note whose only media is a video now resolves a cover.** `/sd` writes an image into a note as
+  an `image` node and a video as a plain link, and the cover resolver read `image` nodes only — so a
+  video note had no cover at all and its share link unfurled without a picture. The resolver now
+  also honours a `cover:` tag that names an **uploaded resource the note does not embed**: the bot
+  uploads a still frame beside the video and tags the note `cover:<resource id>`. Measured on the
+  reported share (`/sd` of an Instagram reel, "1 video(s)"): no `og:image` before, a 200
+  `image/jpeg` from the `/preview` route after.
+
+### Notes
+
+- **The older fallback is deliberately kept.** The tag is consulted *only* when the note has no
+  image of its own. A stale tag on a note that does have images still falls back to the default
+  cover rather than previewing nothing, which is the behaviour every existing test pins.
+- **The cover is still never a copy of the note's own media.** An image already in the note is used
+  at its original URL, as before. What fork.5 adds is the case where the note contains no image at
+  all: the poster is then a frame extracted from the note's own video, not an unrelated asset.
+- The tag value may be a bare resource id (`res_abc`) or a whole uploaded-resource src; both resolve
+  to the canonical stored form before the public-URL mapping, so `og:image` still points at
+  `/preview` and not at the full-size `/blob`.
+- **`scripts/og-preview.mjs` is now listed in the `docker-image` trigger paths.** The Dockerfile
+  copies the file into the runtime image, but the path filter named only `scripts/self-hosted-*.mjs`,
+  so a change to this file alone — exactly this one — would have shipped a stale image.
+
+### Testing
+
+- `bun test` — **2161 pass, 1 fail** with HEAD on the fork tag, the failure being upstream's
+  `build-metadata` tag-only check described under [Versioning](#versioning); 8 tests added.
+- `bun run typecheck` — clean.
+- Mutation-checked: removing the new branch fails exactly 3 tests (2 resolver, 1 renderer) while the
+  fallback tests keep passing, so the guard is specific rather than blanket.
+
 ## v1.81.0-fork.4
 
 Base: upstream [`v1.81.0`](https://github.com/tianma-if/edgeever/releases/tag/v1.81.0).

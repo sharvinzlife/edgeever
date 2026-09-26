@@ -80,7 +80,30 @@ const isRenderableSrc = (src) => RESOURCE_SRC.test(src) || RASTER_SRC.test(src);
 const defaultCoverSrc = (images) =>
   images.find(isRenderableSrc) ?? images[0] ?? null;
 
-/** The cover src for a share: a `cover:` tag naming a present image, else the default cover. */
+const RESOURCE_ID = /^res_[A-Za-z0-9_-]+$/;
+
+/**
+ * The resource id a `cover:` tag names, whether it holds a bare id (`res_abc`)
+ * or a whole uploaded-resource src. Null when it names neither.
+ */
+const coverResourceId = (wanted) => resourceIdOf(wanted) ?? (RESOURCE_ID.test(wanted) ? wanted : null);
+
+/** The stored-src form of an uploaded resource id. */
+const srcForResourceId = (id) => `/api/v1/resources/${id}/blob`;
+
+/**
+ * The cover src for a share: a `cover:` tag naming a present image, else the
+ * default cover.
+ *
+ * A `cover:` tag that names an uploaded resource the note does not embed is
+ * honoured too — but only when the note has no image of its own. That is the
+ * video case: `/sd` writes a video as a plain link (an `edgeeverFileAttachment`
+ * is not an `image` node), and the bot uploads the poster frame beside it and
+ * tags the note `cover:<poster id>`, so there is no image node to find. Keeping
+ * this behind `images.length === 0` leaves the older behaviour intact for a
+ * stale tag on a note that does have images: it still falls back to the default
+ * cover rather than previewing nothing.
+ */
 export const resolveCoverSrc = (share) => {
   const images = collectImageSrcs(share?.contentJson);
   const marker = (Array.isArray(share?.tags) ? share.tags : [])
@@ -89,6 +112,10 @@ export const resolveCoverSrc = (share) => {
     const wanted = marker.slice(marker.indexOf(":") + 1).trim();
     const hit = images.find((src) => src === wanted || resourceIdOf(src) === wanted);
     if (hit) return hit;
+    if (images.length === 0) {
+      const id = coverResourceId(wanted);
+      if (id) return srcForResourceId(id);
+    }
   }
   return defaultCoverSrc(images);
 };

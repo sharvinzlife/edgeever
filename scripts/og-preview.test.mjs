@@ -134,6 +134,53 @@ describe("resolveCoverSrc renderable preference", () => {
   });
 });
 
+describe("resolveCoverSrc video poster tag", () => {
+  // A video note: /sd writes the video as an edgeeverFileAttachment link, so
+  // there is no `image` node — only the poster the bot uploaded beside it,
+  // named by a `cover:` tag.
+  const videoDoc = {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "edgeeverFileAttachment",
+            attrs: { url: "/api/v1/resources/res_clip/blob", mimeType: "video/mp4" },
+          },
+        ],
+      },
+    ],
+  };
+  const POSTER = "/api/v1/resources/res_poster/blob";
+
+  test("a cover tag naming a poster the note does not embed is used", () => {
+    expect(resolveCoverSrc({ tags: ["instagram", "cover:res_poster"], contentJson: videoDoc })).toBe(POSTER);
+  });
+
+  test("a cover tag holding the whole poster src is used too", () => {
+    expect(resolveCoverSrc({ tags: [`cover:${POSTER}`], contentJson: videoDoc })).toBe(POSTER);
+  });
+
+  test("a video note with no cover tag still has no cover", () => {
+    expect(resolveCoverSrc({ tags: ["instagram"], contentJson: videoDoc })).toBeNull();
+  });
+
+  test("a cover tag naming something that is not a resource is not invented", () => {
+    expect(resolveCoverSrc({ tags: ["cover:https://cdn/x.jpg"], contentJson: videoDoc })).toBeNull();
+  });
+
+  test("with an image present, an absent-resource cover tag still falls back to it", () => {
+    // The older behaviour is deliberately kept: a stale poster tag must not
+    // beat an image the note actually shows.
+    expect(resolveCoverSrc({ tags: ["cover:res_zzz"], contentJson: doc([A, B]) })).toBe(A);
+  });
+
+  test("a poster tag is not used when the note has any image", () => {
+    expect(resolveCoverSrc({ tags: ["cover:res_poster"], contentJson: doc([A]) })).toBe(A);
+  });
+});
+
 describe("describeShare", () => {
   test("keeps underscores so identifiers stay intact", () => {
     expect(describeShare({ contentMarkdown: "see res_530dc5f2 for details" }))
@@ -220,5 +267,47 @@ describe("createSharePageRenderer failure isolation", () => {
       describe: () => "text",
     });
     expect(await broken("tok", "https://notes.example/share/tok")).toBeNull();
+  });
+});
+
+// The whole point of the video poster path, end to end through the renderer:
+// a note whose only media is a video has no image node, so its og:image can
+// come from nothing but the cover tag the bot wrote.
+describe("createSharePageRenderer with a video cover", () => {
+  const shellHtml = "<html><head><title>EdgeEver</title></head><body><div id=root></div></body></html>";
+  const videoShare = (tags) => ({
+    title: "Ab Circuit",
+    contentMarkdown: "> **TL;DR** A home ab circuit.",
+    contentJson: {
+      type: "doc",
+      content: [{
+        type: "paragraph",
+        content: [{
+          type: "edgeeverFileAttachment",
+          attrs: { url: "/api/v1/resources/res_clip/blob", mimeType: "video/mp4" },
+        }],
+      }],
+    },
+    tags,
+  });
+  const render = (share) => createSharePageRenderer({
+    fetchShare: async () => share,
+    readIndexHtml: async () => shellHtml,
+    describe: describeShare,
+  })("tok", "https://notes.example/share/tok");
+
+  test("previews a video note with the poster the bot uploaded", async () => {
+    const html = await render(videoShare(["workout", "instagram", "cover:res_poster"]));
+    expect(html).toContain(
+      '<meta property="og:image" content="https://notes.example/api/public/shares/tok/resources/res_poster/preview">',
+    );
+    expect(html).toContain('<meta property="og:title" content="Ab Circuit">');
+    expect(html).toContain('<meta name="twitter:card" content="summary_large_image">');
+  });
+
+  test("still previews with no picture when the video has no cover tag", async () => {
+    const html = await render(videoShare(["workout", "instagram"]));
+    expect(html).not.toContain("og:image");
+    expect(html).toContain('<meta name="twitter:card" content="summary">');
   });
 });
