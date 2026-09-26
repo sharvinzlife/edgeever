@@ -43,9 +43,11 @@ Fixes a share whose media is a **video** previewing with a title and description
 - The tag value may be a bare resource id (`res_abc`) or a whole uploaded-resource src; both resolve
   to the canonical stored form before the public-URL mapping, so `og:image` still points at
   `/preview` and not at the full-size `/blob`.
-- **`scripts/og-preview.mjs` is now listed in the `docker-image` trigger paths.** The Dockerfile
-  copies the file into the runtime image, but the path filter named only `scripts/self-hosted-*.mjs`,
-  so a change to this file alone — exactly this one — would have shipped a stale image.
+- **`scripts/og-preview.mjs` is now listed in the `docker-image` trigger paths**, so the list matches
+  what the Dockerfile actually copies — it named only `scripts/self-hosted-*.mjs`. This is inert for
+  this fork: that workflow is guarded to `github.repository == 'tianma-if/edgeever'` and publishes to
+  `ghcr.io/tianma-if/edgeever`, which is exactly why the fork's images are built on the OCI host
+  instead. The fix only matters if the workflow ever runs for this repository.
 
 ### Testing
 
