@@ -206,6 +206,46 @@ describe("describeShare", () => {
     expect(describeShare({})).toBe("");
     expect(describeShare(null)).toBe("");
   });
+
+  // The real shape of a /sd video note: the attachment embed leads, and its
+  // link text is the downloader's filename. Taken verbatim from the Ab Circuit
+  // share, which previewed with "instagram_premium_fastdl_1_1790284537.mp4" as
+  // the opening words of its description.
+  test("drops the leading attachment embed and starts at the prose", () => {
+    expect(describeShare({
+      contentMarkdown: "[instagram_premium_fastdl_1_1790284537.mp4](/api/v1/resources/res_f93ced3c5a2741f8a74aa26f43ae077a/blob)" +
+        "\n\n> **TL;DR** A home ab/core circuit routine from an Instagram reel.",
+    })).toBe("TL;DR A home ab/core circuit routine from an Instagram reel.");
+  });
+
+  test("drops every leading attachment embed, not just the first", () => {
+    expect(describeShare({
+      contentMarkdown: "[clip.mp4](/api/v1/resources/res_1/blob)\n\n" +
+        "[notes.pdf](/api/v1/resources/res_2/blob)\n\n> **TL;DR** Two files.",
+    })).toBe("TL;DR Two files.");
+  });
+
+  test("drops a leading image so the attachment link behind it is reached", () => {
+    expect(describeShare({
+      contentMarkdown: "![card.jpg](/api/v1/resources/res_1/blob)\n\n" +
+        "[clip.mp4](/api/v1/resources/res_2/blob)\n\n> **TL;DR** Slide then clip.",
+    })).toBe("TL;DR Slide then clip.");
+  });
+
+  test("keeps the text of a leading link that is not an upload", () => {
+    // A note that opens by linking to the wider web is making a point.
+    expect(describeShare({ contentMarkdown: "[the docs](https://x/d) are worth reading" }))
+      .toBe("the docs are worth reading");
+  });
+
+  test("an attachment-only note has no description to show", () => {
+    expect(describeShare({ contentMarkdown: "[clip.mp4](/api/v1/resources/res_1/blob)" })).toBe("");
+  });
+
+  test("an attachment embed in the middle keeps its link text", () => {
+    expect(describeShare({ contentMarkdown: "See [clip.mp4](/api/v1/resources/res_1/blob) attached" }))
+      .toBe("See clip.mp4 attached");
+  });
 });
 
 describe("toPublicImageUrl", () => {

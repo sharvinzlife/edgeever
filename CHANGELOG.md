@@ -16,6 +16,30 @@ is the record of what changed.
 
 ---
 
+## v1.81.0-fork.6
+
+Base: upstream [`v1.81.0`](https://github.com/tianma-if/edgeever/releases/tag/v1.81.0).
+
+Fixes a share description that opened with the name of the file the note attached.
+
+### Fixed
+
+- **`og:description` no longer leads with an uploaded file's name.** `/sd` writes one embed per
+  uploaded file ahead of any prose, and a link preview keeps a Markdown link's text — so a video
+  note's description read `instagram_premium_fastdl_1_1790284537.mp4 TL;DR A home ab/core circuit…`.
+  The leading run of media embeds is dropped, so the description starts at the prose. Only a link
+  whose target is an uploaded resource counts: a note that opens by linking to the wider web keeps
+  its text, and an embed further down the note is untouched.
+- An attachment-only note now yields an empty description, which the meta block omits rather than
+  filling with a filename.
+
+### Testing
+
+- `bun test` — **2168 pass, 0 fail**. 6 tests added.
+- `bun run typecheck` — clean.
+- Mutation-checked: removing the strip fails exactly 4 tests, while the "keeps the text of a link
+  that is not an upload" and mid-note cases keep passing.
+
 ## v1.81.0-fork.5
 
 Base: upstream [`v1.81.0`](https://github.com/tianma-if/edgeever/releases/tag/v1.81.0).

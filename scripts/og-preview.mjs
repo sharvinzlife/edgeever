@@ -141,6 +141,19 @@ export const toPublicImageUrl = (src, token, baseUrl) => {
 };
 
 /**
+ * The media a note opens with. `/sd` writes one embed per uploaded file ahead
+ * of any prose, and an attachment's Markdown link text is its filename
+ * (`instagram_premium_fastdl_1_1790284537.mp4`), which is noise at the front
+ * of a link preview.
+ *
+ * Images are matched here as well as further down because dropping one uncovers
+ * the attachment link sitting behind it. Only a link whose target is an
+ * uploaded resource counts: a note that opens by linking to the wider web is
+ * making a point, and keeps its text.
+ */
+const LEADING_MEDIA = /^(?:\s*!\[[^\]]*\]\([^)]*\)|\s*\[[^\]]*\]\([^)]*\/resources\/[^)]*\))+/;
+
+/**
  * A short plain-text summary of a share's markdown for og:description.
  * Underscores are left intact: they are far more common inside the resource
  * ids the app writes (`res_530dc5f2…`) than as emphasis markers, and blanking
@@ -149,6 +162,7 @@ export const toPublicImageUrl = (src, token, baseUrl) => {
 export const describeShare = (share) => {
   const markdown = typeof share?.contentMarkdown === "string" ? share.contentMarkdown : "";
   return markdown
+    .replace(LEADING_MEDIA, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/[`*#>]/g, " ")

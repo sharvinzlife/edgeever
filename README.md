@@ -295,11 +295,16 @@ EdgeEver is self-hosted software. Except for official demo instances, project ma
 
 > **Unofficial fork.** This repository is a fork of [`tianma-if/edgeever`](https://github.com/tianma-if/edgeever). It is not affiliated with, authorized, sponsored, or endorsed by the EdgeEver maintainers. The EdgeEver name and logo remain theirs — see [Trademark and Brand Use](#trademark-and-brand-use) above.
 
-🆕 **[v1.81.0-fork.5](CHANGELOG.md#v1810-fork5)** · base upstream `v1.81.0`
+🆕 **[v1.81.0-fork.6](CHANGELOG.md#v1810-fork6)** · base upstream `v1.81.0`
 
 Share links now preview with the note's **own cover image** instead of the app icon: metadata is
 injected server-side for crawlers that do not run JavaScript, the default cover prefers an image a
 crawler can actually render, and a `cover:<src>` tag pins the preview to one specific image.
+
+`fork.6` stops the description opening with the name of an attached file. `/sd` writes an upload
+ahead of the prose, and a preview keeps a Markdown link's text, so a video note read
+`instagram_premium_fastdl_1_1790284537.mp4 TL;DR A home ab/core circuit…`. The leading media embeds
+are dropped now, so the description starts at the prose.
 
 `fork.5` covers the case where the note contains **no image at all**. `/sd` writes a video as a plain
 link, so a video-only note had nothing to preview with; the bot now uploads a still frame of that
