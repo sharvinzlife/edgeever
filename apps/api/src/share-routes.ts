@@ -10,6 +10,7 @@ import { parseByteRange, rangeNotSatisfiable } from "./byte-range";
 import { createId, isoNow, parseJsonArray } from "./entity-utils";
 import { apiError, notFound } from "./http-errors";
 import { getCachedPreview, previewCacheKey, putCachedPreview } from "./image-preview-contract";
+import { restoreMemosRecord } from "./memo-service";
 import { resolveObjectStorage } from "./object-storage";
 import { getAuditActor, getWorkspaceId, requireScopes, requireUser } from "./request-auth";
 import { contentDispositionAttachment, contentDispositionInline } from "./resource-service";
@@ -513,5 +514,28 @@ export const registerMemoShareRoutes = (app: Hono<AppEnv>) => {
         updatedAt: row.updated_at,
       },
     });
+  });
+
+  // Brings back the note behind a share link that was moved to the trash, so a
+  // link already sent works again. The share row survives trashing (see
+  // deleteMemosRecord); a permanently deleted or merged note has no row and 404s.
+  app.post("/api/v1/shares/:token/restore", async (c) => {
+    const denied = requireScopes(c, "write:memos");
+    if (denied) return denied;
+    const token = normalizeShareToken(c.req.param("token"));
+    if (!token) return notFound(c, "Shared note not found");
+    const workspaceId = getWorkspaceId(c);
+    const row = await c.env.storage.db.prepare(
+      `SELECT m.id, m.title, m.is_deleted, m.merged_into_memo_id
+       FROM memo_shares ms
+       INNER JOIN memos m ON m.id = ms.memo_id AND m.workspace_id = ms.workspace_id
+       WHERE ms.token = ? AND ms.workspace_id = ?
+       LIMIT 1`
+    ).bind(token, workspaceId).first<{ id: string; title: string | null; is_deleted: number; merged_into_memo_id: string | null }>();
+    if (!row || row.merged_into_memo_id) return notFound(c, "Shared note not found");
+    if (row.is_deleted === 1) {
+      await restoreMemosRecord(c.env.storage.db, workspaceId, [row.id], getAuditActor(c));
+    }
+    return c.json({ memoId: row.id, title: row.title, restored: row.is_deleted === 1 });
   });
 };

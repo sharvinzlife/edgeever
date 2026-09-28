@@ -682,3 +682,73 @@ describe("public share image preview", () => {
     sqlite.close();
   });
 });
+
+describe("restore by share link", () => {
+  const actor = { actorType: "user", actorId: null };
+
+  test("restores a trashed note and brings its public link back", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const app = createAgentShareApp(environment, ["write:memos"]);
+    await deleteMemosRecord(environment, "ws_member", ["memo_source"], false, actor);
+
+    const response = await app.request(`/api/v1/shares/${sourceToken}/restore`, { method: "POST" }, environment);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ memoId: "memo_source", title: "Source", restored: true });
+    expect(sqlite.query("SELECT is_deleted FROM memos WHERE id = ?").get("memo_source").is_deleted).toBe(0);
+
+    const publicResponse = await app.request(`/api/public/shares/${sourceToken}`, {}, environment);
+    expect(publicResponse.status).toBe(200);
+    sqlite.close();
+  });
+
+  test("leaves a live note untouched", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const app = createAgentShareApp(environment, ["write:memos"]);
+
+    const response = await app.request(`/api/v1/shares/${sourceToken}/restore`, { method: "POST" }, environment);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ memoId: "memo_source", title: "Source", restored: false });
+    expect(sqlite.query("SELECT is_deleted FROM memos WHERE id = ?").get("memo_source").is_deleted).toBe(0);
+    sqlite.close();
+  });
+
+  test("answers 404 for unknown and other-workspace tokens alike", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    sqlite.query("INSERT INTO workspaces (id, name, is_personal) VALUES (?, ?, 1)")
+      .run("ws_other", "Other workspace");
+    sqlite.query("INSERT INTO notebooks (id, workspace_id, name) VALUES (?, ?, ?)")
+      .run("nb_other", "ws_other", "Inbox");
+    sqlite.query("INSERT INTO memos (id, workspace_id, notebook_id, title) VALUES (?, ?, ?, ?)")
+      .run("memo_other", "ws_other", "nb_other", "Other");
+    sqlite.query("INSERT INTO memo_contents (memo_id, content_json, content_markdown, content_hash) VALUES (?, ?, '', ?)")
+      .run("memo_other", JSON.stringify({ type: "doc", content: [] }), "memo_other-hash");
+    const foreignToken = "f".repeat(43);
+    sqlite.query("INSERT INTO memo_shares (id, memo_id, workspace_id, token) VALUES (?, ?, ?, ?)")
+      .run("share_other", "memo_other", "ws_other", foreignToken);
+    const app = createAgentShareApp(environment, ["write:memos"]);
+
+    for (const token of ["z".repeat(43), "too-short", foreignToken]) {
+      const response = await app.request(`/api/v1/shares/${token}/restore`, { method: "POST" }, environment);
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({
+        error: { code: "not_found", message: "Shared note not found" },
+      });
+    }
+    sqlite.close();
+  });
+
+  test("requires the write:memos scope for API tokens", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const app = createAgentShareApp(environment, ["read:memos"]);
+
+    const response = await app.request(`/api/v1/shares/${sourceToken}/restore`, { method: "POST" }, environment);
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: { code: "forbidden", message: "Missing required scope: write:memos" },
+    });
+    sqlite.close();
+  });
+});
