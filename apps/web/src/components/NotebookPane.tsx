@@ -16,6 +16,7 @@ import {
   ArrowDownWideNarrow,
   Notebook as NotebookIcon,
   Tags,
+  CalendarDays,
   Archive,
   Trash2,
   KeyRound,
@@ -460,6 +461,7 @@ export const NotebookPane = ({
   onMoveMemos,
   onBackToList,
   onOpenTags,
+  onOpenCalendar,
   onOpenAssets,
   onOpenTemplates,
   pluginHost,
@@ -498,6 +500,7 @@ export const NotebookPane = ({
   onMoveMemos: (memoIds: string[], targetNotebookId: string) => void;
   onBackToList: () => void;
   onOpenTags: () => void;
+  onOpenCalendar: () => void;
   onOpenAssets: () => void;
   onOpenTemplates: () => void;
   pluginHost: EdgeEverPluginHost;
@@ -663,6 +666,7 @@ export const NotebookPane = ({
       <TooltipProvider delayDuration={0} skipDelayDuration={0}>
         <nav className="grid shrink-0 grid-cols-2 gap-0.5 border-b border-slate-100 px-2 py-1.5 sm:grid-cols-3 lg:grid-cols-5" aria-label={t("notebookPane.secondaryEntries")}>
           <SidebarShortcutButton icon={<Tags className="h-4 w-4" />} label={t("mobileSheets.tags")} onClick={onOpenTags} />
+          <SidebarShortcutButton icon={<CalendarDays className="h-4 w-4" />} label={t("calendar.open")} onClick={onOpenCalendar} />
           <SidebarShortcutButton icon={<Archive className="h-4 w-4" />} label={t("mobileSheets.assets")} onClick={onOpenAssets} />
           {showTemplateEntry && <SidebarShortcutButton icon={<LayoutTemplate className="h-4 w-4" />} label={t("nav.templates")} onClick={onOpenTemplates} />}
           <PluginToolbarMenu
@@ -892,6 +896,7 @@ export const NotebookPane = ({
                 onClick={onToggleCollapsed}
               />
               <SidebarRailButton icon={<Tags className="h-4 w-4" />} label={t("mobileSheets.tags")} onClick={onOpenTags} />
+              <SidebarRailButton icon={<CalendarDays className="h-4 w-4" />} label={t("calendar.open")} onClick={onOpenCalendar} />
               <SidebarRailButton icon={<Archive className="h-4 w-4" />} label={t("mobileSheets.assets")} onClick={onOpenAssets} />
               {showTemplateEntry ? (
                 <SidebarRailButton icon={<LayoutTemplate className="h-4 w-4" />} label={t("nav.templates")} onClick={onOpenTemplates} />

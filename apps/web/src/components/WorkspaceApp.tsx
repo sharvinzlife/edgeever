@@ -145,6 +145,7 @@ const EvernoteImportGuidePane = lazy(() =>
   import("./EvernoteImportGuidePane").then((module) => ({ default: module.EvernoteImportGuidePane }))
 );
 const TagsPane = lazy(() => import("./TagsPane").then((module) => ({ default: module.TagsPane })));
+const CalendarPane = lazy(() => import("./CalendarPane").then((module) => ({ default: module.CalendarPane })));
 const TemplatesPane = lazy(() => import("./TemplatesPane").then((module) => ({ default: module.TemplatesPane })));
 const AiPromptsPane = lazy(() => import("./AiPromptsPane").then((module) => ({ default: module.AiPromptsPane })));
 const ExecutionCenterPane = lazy(() =>
@@ -507,7 +508,7 @@ export const WorkspaceApp = ({
     setShortcutSettings,
     shortcutSettings,
   } = useWorkspacePreferences();
-  const [rightView, setRightView] = useState<"editor" | "settings" | "plugins" | "assets" | "tags" | "templates" | "ai-prompts" | "execution-center" | "evernote-migration">(() =>
+  const [rightView, setRightView] = useState<"editor" | "settings" | "plugins" | "assets" | "tags" | "calendar" | "templates" | "ai-prompts" | "execution-center" | "evernote-migration">(() =>
     isInitialSettingsRoute
       ? "settings"
       : isInitialPluginsRoute
@@ -2294,6 +2295,14 @@ export const WorkspaceApp = ({
     setActivePane("editor");
   };
 
+  const handleOpenCalendar = () => {
+    clearHiddenMobileSearch();
+    skipNextHomeRouteSyncRef.current = route.pathname !== "/";
+    navigateWorkspaceHome();
+    setRightView("calendar");
+    setActivePane("editor");
+  };
+
   const handleOpenTemplates = () => {
     clearHiddenMobileSearch();
     navigateWorkspaceTemplates();
@@ -2522,6 +2531,11 @@ export const WorkspaceApp = ({
     }
 
     if (rightView === "tags") {
+      handleCloseAssets();
+      return true;
+    }
+
+    if (rightView === "calendar") {
       handleCloseAssets();
       return true;
     }
@@ -2830,6 +2844,8 @@ export const WorkspaceApp = ({
         ? t("workspace.loading.assets")
         : rightView === "tags"
           ? t("workspace.loading.tags")
+        : rightView === "calendar"
+          ? t("calendar.loading")
         : rightView === "templates"
           ? t("templates.title")
         : rightView === "ai-prompts"
@@ -2928,6 +2944,7 @@ export const WorkspaceApp = ({
                   onDiscardConflicts={() => void discardConflictsNow()}
                   onOpenAssets={handleOpenAssets}
                   onOpenTags={handleOpenTags}
+                  onOpenCalendar={handleOpenCalendar}
                   onOpenTemplates={handleOpenTemplates}
                   pluginHost={pluginHost}
                   onOpenPluginManager={handleOpenPluginManager}
@@ -3135,6 +3152,8 @@ export const WorkspaceApp = ({
                     <AssetsPane onClose={handleCloseAssets} repository={repository} onOpenExecutionCenter={handleOpenExecutionCenter} />
                   ) : rightView === "tags" ? (
                     <TagsPane onClose={handleCloseAssets} onSelectTag={handleSelectTag} repository={repository} onOpenExecutionCenter={handleOpenExecutionCenter} />
+                  ) : rightView === "calendar" ? (
+                    <CalendarPane onClose={handleCloseAssets} onSelectTag={handleSelectTag} repository={repository} onOpenExecutionCenter={handleOpenExecutionCenter} />
                   ) : rightView === "templates" ? (
                     <TemplatesPane
                     canCreateMemo={canCreateMemo}
