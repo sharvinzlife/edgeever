@@ -304,7 +304,7 @@ describe("AI route contracts", () => {
     sqlite.close();
   });
 
-  test("prepares tag suggestions with model credentials and no provider call", async () => {
+  test("fork: tag-suggestion prepare is disabled and never returns the API key", async () => {
     const app = createApp();
     const { environment: databaseEnvironment } = createDatabaseEnvironment();
     const created = await app.request(
@@ -326,12 +326,10 @@ describe("AI route contracts", () => {
       },
       databaseEnvironment,
     );
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body.apiKey).toBe("secret");
-    expect(body.prompt).toContain("Body about React");
-    expect(body.currentTags).toEqual(["Current"]);
-    expect(body.maxOutputTokens).toBe(300);
+    expect(response.status).toBe(404);
+    const text = await response.text();
+    expect(text).not.toContain(validSettings.apiKey);
+    expect(JSON.parse(text)).toMatchObject({ error: { code: "direct_ai_disabled" } });
   });
 
   test("defers prompt-specific action and parameter validation to the saved prompt", () => {
@@ -385,7 +383,7 @@ describe("AI route contracts", () => {
     expect(response.status).toBe(400);
   });
 
-  test("prepares a direct generation payload without calling the model provider", async () => {
+  test("fork: direct generation prepare is disabled and never returns the API key", async () => {
     const app = createApp();
     const { environment: databaseEnvironment } = createDatabaseEnvironment();
     const created = await app.request(
@@ -408,18 +406,13 @@ describe("AI route contracts", () => {
       },
       databaseEnvironment,
     );
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body.apiKey).toBe("secret");
-    expect(body.provider).toBe("openai-compatible");
-    expect(body.baseUrl).toBe("https://models.example.com/v1");
-    expect(body.modelId).toBe("model-a");
-    expect(body.prompt).toContain("Body");
-    expect(body.system).toContain(body.resultBoundary.start);
-    expect(body.system).toContain(body.resultBoundary.end);
+    expect(response.status).toBe(404);
+    const text = await response.text();
+    expect(text).not.toContain(validSettings.apiKey);
+    expect(JSON.parse(text)).toMatchObject({ error: { code: "direct_ai_disabled" } });
   });
 
-  test("returns the default model endpoint without the API key", async () => {
+  test("fork: direct-target is disabled so web clients skip the CORS probe", async () => {
     const app = createApp();
     const { environment: databaseEnvironment } = createDatabaseEnvironment();
     const created = await app.request(
@@ -434,14 +427,11 @@ describe("AI route contracts", () => {
     expect(created.status).toBe(201);
 
     const response = await app.request("/api/v1/ai/direct-target", {}, databaseEnvironment);
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body).toEqual({
-      provider: "openai-compatible",
-      baseUrl: "https://models.example.com/v1",
-      modelId: "model-a",
-    });
-    expect(body.apiKey).toBeUndefined();
+    expect(response.status).toBe(404);
+    const text = await response.text();
+    expect(text).not.toContain(validSettings.apiKey);
+    expect(text).not.toContain(validSettings.baseUrl);
+    expect(JSON.parse(text)).toMatchObject({ error: { code: "direct_ai_disabled" } });
   });
 
   test("rejects actions outside the shared note-processing catalog", async () => {
