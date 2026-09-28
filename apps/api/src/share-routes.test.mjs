@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { hashPassword } from "./auth-crypto.ts";
 import { clearPreviewCache, getCachedPreview, previewCacheKey } from "./image-preview-contract.ts";
 import { renderPreview } from "./image-preview.ts";
+import { deleteMemosRecord, restoreMemosRecord } from "./memo-service.ts";
 import { registerMemoShareRoutes, registerPublicShareRoutes } from "./share-routes.ts";
 
 class SqliteD1PreparedStatement {
@@ -206,6 +207,52 @@ describe("public memo shares", () => {
       "inline; filename=\"walkthrough.webm\"; filename*=UTF-8''walkthrough.webm",
     );
     expect(response.headers.get("Accept-Ranges")).toBe("bytes");
+    sqlite.close();
+  });
+});
+
+describe("shares survive the trash", () => {
+  const actor = { actorType: "user", actorId: null };
+
+  test("keeps the share row but hides the link while the note is trashed", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const app = new Hono();
+    registerPublicShareRoutes(app);
+
+    await deleteMemosRecord(environment, "ws_member", ["memo_source"], false, actor);
+
+    const shareRow = sqlite.query("SELECT token FROM memo_shares WHERE memo_id = ?").get("memo_source");
+    expect(shareRow?.token).toBe(sourceToken);
+
+    const response = await app.request(`/api/public/shares/${sourceToken}`, {}, environment);
+    expect(response.status).toBe(404);
+    sqlite.close();
+  });
+
+  test("brings the same link back after restoring from the trash", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const app = new Hono();
+    registerPublicShareRoutes(app);
+
+    await deleteMemosRecord(environment, "ws_member", ["memo_source"], false, actor);
+    expect((await app.request(`/api/public/shares/${sourceToken}`, {}, environment)).status).toBe(404);
+
+    await restoreMemosRecord(environment.storage.db, "ws_member", ["memo_source"], actor);
+
+    const response = await app.request(`/api/public/shares/${sourceToken}`, {}, environment);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ share: { title: "Source" } });
+    sqlite.close();
+  });
+
+  test("drops the share row on permanent delete", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+
+    await deleteMemosRecord(environment, "ws_member", ["memo_source"], false, actor);
+    await deleteMemosRecord(environment, "ws_member", ["memo_source"], true, actor);
+
+    const shareRow = sqlite.query("SELECT token FROM memo_shares WHERE memo_id = ?").get("memo_source");
+    expect(shareRow ?? null).toBeNull();
     sqlite.close();
   });
 });
