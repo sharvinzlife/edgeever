@@ -8,7 +8,7 @@ import { Hono } from "hono";
 import { hashPassword } from "./auth-crypto.ts";
 import { clearPreviewCache, getCachedPreview, previewCacheKey } from "./image-preview-contract.ts";
 import { renderPreview } from "./image-preview.ts";
-import { deleteMemosRecord, restoreMemosRecord } from "./memo-service.ts";
+import { deleteMemosRecord, emptyTrashMemosRecord, restoreMemosRecord } from "./memo-service.ts";
 import { registerMemoShareRoutes, registerPublicShareRoutes } from "./share-routes.ts";
 
 class SqliteD1PreparedStatement {
@@ -253,6 +253,17 @@ describe("shares survive the trash", () => {
 
     const shareRow = sqlite.query("SELECT token FROM memo_shares WHERE memo_id = ?").get("memo_source");
     expect(shareRow ?? null).toBeNull();
+    sqlite.close();
+  });
+
+  test("drops the kept share rows when the trash is emptied", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+
+    await deleteMemosRecord(environment, "ws_member", ["memo_source"], false, actor);
+    await emptyTrashMemosRecord(environment, "ws_member", actor);
+
+    expect(sqlite.query("SELECT token FROM memo_shares WHERE memo_id = ?").get("memo_source") ?? null).toBeNull();
+    expect(sqlite.query("SELECT token FROM memo_shares WHERE memo_id = ?").get("memo_target")?.token).toBe(targetToken);
     sqlite.close();
   });
 });
