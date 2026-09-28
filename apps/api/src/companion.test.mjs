@@ -464,29 +464,26 @@ describe("companion client-direct HTTP contracts", () => {
     loadCredentials: async () => credentials,
   });
 
-  test("prepare returns model credentials and does not invoke the proxy stream", async () => {
-    let streamed = 0;
-    const { request } = fixture({
+  test("fork: prepare is disabled before any credential lookup or turn creation", async () => {
+    let streamed = 0; let loaded = 0;
+    const { request, db } = fixture({
       stream: async () => {
         streamed++;
         return { totalUsage: Promise.resolve({}), fullStream: (async function* () {})() };
       },
-      loadCredentials: async () => credentials,
+      loadCredentials: async () => { loaded++; return credentials; },
     });
     const payload = input({ allowNotes: true });
-    const response = await request("turns/prepare", "POST", payload);
-    expect(response.status).toBe(200);
-    const body = await response.json();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await request("turns/prepare", "POST", payload);
+      expect(response.status).toBe(404);
+      const text = await response.text();
+      expect(text).not.toContain(credentials.apiKey);
+      expect(JSON.parse(text)).toMatchObject({ error: { code: "direct_ai_disabled" } });
+    }
+    expect(loaded).toBe(0);
     expect(streamed).toBe(0);
-    expect(body.apiKey).toBe("direct-key");
-    expect(body.modelId).toBe("direct-model");
-    expect(body.provider).toBe("openai-compatible");
-    expect(body.instructions).toContain("untrusted DATA");
-    expect(body.messages.at(-1).content).toBe(payload.message);
-    expect(body.tools.some(tool => tool.name === "search_memos")).toBe(true);
-    expect(body.tools.some(tool => tool.name === "todo_write")).toBe(true);
-    expect(body.maxSteps).toBe(8);
-    expect((await request("turns/prepare", "POST", payload)).status).toBe(409);
+    expect(await getCompanionTurn(db, scope, payload.id)).toBeNull();
   });
 
   test("tool execute, checkpoint and complete persist a client-driven turn", async () => {
@@ -497,7 +494,8 @@ describe("companion client-direct HTTP contracts", () => {
       notebookId: "nb_ideas", title: "Idea A", contentMarkdown: "First unedited thought", tags: ["existing"],
     }, { actorType: "user", actorId: scope.ownerId }, scope.ownerId);
     const payload = input({ allowNotes: true });
-    expect((await setup.request("turns/prepare", "POST", payload)).status).toBe(200);
+    // Fork: turns/prepare is disabled; start the running turn directly.
+    await beginCompanionTurn(setup.db, scope, payload, credentials.modelId);
     const listed = await setup.request(`turns/${payload.id}/tools`, "POST", {
       name: "search_memos", input: { query: "Idea" }, response: "", process: "",
     });
@@ -516,9 +514,10 @@ describe("companion client-direct HTTP contracts", () => {
   });
 
   test("proxy streams an already prepared running turn", async () => {
-    const { request } = directFixture();
+    const { request, db } = directFixture();
     const payload = input();
-    expect((await request("turns/prepare", "POST", payload)).status).toBe(200);
+    // Fork: turns/prepare is disabled; start the running turn directly.
+    await beginCompanionTurn(db, scope, payload, credentials.modelId);
     const events = parseEvents(await (await request(`turns/${payload.id}/proxy`, "POST", {})).text());
     expect(events.some(event => event.type === "text-delta" && event.text === "proxied")).toBe(true);
     expect(events.at(-1)).toMatchObject({ type: "done", turn: { status: "completed" } });

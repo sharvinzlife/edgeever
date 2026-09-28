@@ -44,17 +44,18 @@ test('oversized and cancelled public responses fail without exposing upstream er
   expect((await cancelled('network/fetch', { url: 'https://example.org' }, controller.signal)).status).toBe(502);
 });
 
-test('generic AI prepare returns credentials without invoking the provider', async () => {
-  let generated = 0;
+test('fork: generic AI prepare is disabled before any credential lookup', async () => {
+  let generated = 0; let loaded = 0;
   const call = fixture({
     generate: async () => { generated++; return { text: 'nope' }; },
-    loadCredentials: async () => ({ provider: 'openai-compatible', baseUrl: 'https://api.example/v1', apiKey: 'plugin-key', modelId: 'model-a' }),
+    loadCredentials: async () => { loaded++; return { provider: 'openai-compatible', baseUrl: 'https://api.example/v1', apiKey: 'plugin-key', modelId: 'model-a' }; },
   });
   const response = await call('ai/generate/prepare', { system: 'Translate', prompt: 'hello', maxOutputTokens: 100 });
-  expect(response.status).toBe(200);
-  expect(await response.json()).toMatchObject({
-    apiKey: 'plugin-key', system: 'Translate', prompt: 'hello', maxOutputTokens: 100,
-  });
+  expect(response.status).toBe(404);
+  const text = await response.text();
+  expect(text).not.toContain('plugin-key');
+  expect(JSON.parse(text)).toMatchObject({ error: { code: 'direct_ai_disabled' } });
+  expect(loaded).toBe(0);
   expect(generated).toBe(0);
 });
 
