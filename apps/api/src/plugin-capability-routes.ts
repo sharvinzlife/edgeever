@@ -5,6 +5,7 @@ import type { Hono } from 'hono';
 import type { AppEnv, Bindings } from './api-context';
 import { getAiSettings, loadDefaultAiModel, loadDefaultAiModelCredentials, resolvePrimaryAiCredentialEncryptionKey } from './ai-service';
 import { apiError } from './http-errors';
+import { DIRECT_AI_DISABLED, directAiDisabled } from './fork-direct-ai';
 import { getWorkspaceId, requireUser } from './request-auth';
 import { PUBLIC_NETWORK_TIMEOUT_MS, publicRequestHeaders, publicResponseHeaders, readPublicBody, validatePublicUrl } from './public-network-policy';
 
@@ -29,6 +30,7 @@ export function registerPluginCapabilityRoutes(app: Hono<AppEnv>, dependencies: 
     });
   }
   app.post('/api/v1/plugins/ai/generate/prepare', zValidator('json', PluginAiGenerateSchema), async c => {
+    if (DIRECT_AI_DISABLED) return directAiDisabled(c);
     try {
       const input = c.req.valid('json');
       const loadCredentials = dependencies.loadCredentials ?? loadDefaultAiModelCredentials;

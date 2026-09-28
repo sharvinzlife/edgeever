@@ -45,6 +45,7 @@ import {
   testAiModel,
 } from "./ai-service";
 import { createId, isoNow } from "./entity-utils";
+import { DIRECT_AI_DISABLED, directAiDisabled } from "./fork-direct-ai";
 import { apiError, forbidden, notFound } from "./http-errors";
 import { getWorkspaceId, requireUser } from "./request-auth";
 import { encryptSecret } from "./secret-encryption";
@@ -576,6 +577,7 @@ export const registerAiRoutes = (app: Hono<AppEnv>, dependencies: AiRouteDepende
     async (context) => {
       const denied = requireUser(context);
       if (denied) return denied;
+      if (DIRECT_AI_DISABLED) return directAiDisabled(context);
       try {
         const input = context.req.valid("json");
         const workspaceId = getWorkspaceId(context);
@@ -656,6 +658,7 @@ export const registerAiRoutes = (app: Hono<AppEnv>, dependencies: AiRouteDepende
     async (context) => {
       const denied = requireUser(context);
       if (denied) return denied;
+      if (DIRECT_AI_DISABLED) return directAiDisabled(context);
       try {
         return context.json(await getDefaultAiDirectTarget(
           context.env.storage.db,
@@ -674,6 +677,7 @@ export const registerAiRoutes = (app: Hono<AppEnv>, dependencies: AiRouteDepende
     async (context) => {
       const denied = requireUser(context);
       if (denied) return denied;
+      if (DIRECT_AI_DISABLED) return directAiDisabled(context);
       try {
         const input = context.req.valid("json");
         const fields = await resolveAiGenerateFields(context, input);

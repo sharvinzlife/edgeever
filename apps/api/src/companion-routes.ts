@@ -8,6 +8,7 @@ import type { AppContext, AppEnv, Bindings } from "./api-context";
 import { AppError } from "./app-error";
 import { loadDefaultAiModel, loadDefaultAiModelCredentials } from "./ai-service";
 import { apiError, forbidden, notFound } from "./http-errors";
+import { DIRECT_AI_DISABLED, directAiDisabled } from "./fork-direct-ai";
 import { requireUser, getWorkspaceId } from "./request-auth";
 import { beginCompanionTurn, checkpointCompanionTurn, clearCompanionHistory, companionRevision,
   forgetCompanionMemory, getCompanionTurn, listCompanionMemories, listCompanionTurns, mapCompanionTurn,
@@ -190,6 +191,7 @@ export const registerCompanionRoutes = (parent: Hono<AppEnv>, dependencies: {
     } finally { clearTimeout(timeout); }
   });
   app.post("/api/v1/companion/discovery/check/prepare", async c => {
+    if (DIRECT_AI_DISABLED) return directAiDisabled(c);
     const stop = new AbortController();
     const timeout = setTimeout(() => stop.abort(), 60_000);
     try {
@@ -308,6 +310,7 @@ export const registerCompanionRoutes = (parent: Hono<AppEnv>, dependencies: {
     return streamCompanionTurn(c, dependencies, { db, scope, row, input, model, resume: { response: row.response, answers: answers ?? turnAnswers(row) } });
   });
   app.post("/api/v1/companion/turns/:id/resume/prepare", zValidator("json", CompanionTurnResumeSchema), async c => {
+    if (DIRECT_AI_DISABLED) return directAiDisabled(c);
     if (!CompanionIdSchema.safeParse(c.req.param("id")).success) return notFound(c, "Conversation not found.");
     const db = c.env.storage.db;
     const scope = scopeFor(c);
@@ -449,6 +452,7 @@ export const registerCompanionRoutes = (parent: Hono<AppEnv>, dependencies: {
     return streamCompanionTurn(c, dependencies, { db, scope, row, input, model });
   });
   app.post("/api/v1/companion/turns/prepare", zValidator("json", CompanionTurnInputSchema), async c => {
+    if (DIRECT_AI_DISABLED) return directAiDisabled(c);
     const input = c.req.valid("json");
     const db = c.env.storage.db;
     const scope = scopeFor(c);
