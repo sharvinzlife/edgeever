@@ -2362,5 +2362,6 @@ export const ja = {
     importNoEvents: "そのファイルに予定が見つかりませんでした。",
     importResult: "{{created}} 件をインポートし、{{skipped}} 件を既存のためスキップしました。",
     importFailed: "インポートに失敗しました：{{message}}",
+    addEntryFailed: "予定を追加できませんでした：{{message}}",
   },
 } as const;

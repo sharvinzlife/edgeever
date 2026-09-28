@@ -90,6 +90,7 @@ export const CalendarPane = ({
       await invalidateCalendarData();
       onSelectTag(dateTag);
     },
+    onError: (error) => setImportMessage(t("calendar.addEntryFailed", { message: errorMessage(error) })),
   });
 
   const handleFilePicked = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -141,7 +142,7 @@ export const CalendarPane = ({
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-card">
       <header className="flex h-[calc(4rem+env(safe-area-inset-top))] shrink-0 items-end justify-between border-b border-slate-200 px-6 pb-3 pt-[env(safe-area-inset-top)] lg:h-16 lg:items-center lg:pb-0 lg:pt-0">
         <div className="flex min-w-0 items-center gap-3">
-          <Button size="icon" variant="ghost" title={t("common.back")} aria-label={t("common.back")} onClick={onClose} className="h-9 w-9 rounded-lg hover:bg-slate-100">
+          <Button size="icon" variant="ghost" aria-label={t("common.back")} onClick={onClose} className="h-9 w-9 rounded-lg hover:bg-slate-100">
             <ChevronLeft className="h-5 w-5 text-slate-500" />
           </Button>
           <div className="min-w-0">

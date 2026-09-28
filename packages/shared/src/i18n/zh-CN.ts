@@ -2360,5 +2360,6 @@ export const zhCN = {
     importNoEvents: "该文件中没有找到日程。",
     importResult: "已导入 {{created}} 条，跳过 {{skipped}} 条已存在。",
     importFailed: "导入失败：{{message}}",
+    addEntryFailed: "无法添加日程：{{message}}",
   },
 } as const;

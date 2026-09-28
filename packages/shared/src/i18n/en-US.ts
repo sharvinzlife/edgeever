@@ -2362,5 +2362,6 @@ export const enUS = {
     importNoEvents: "No events found in that file.",
     importResult: "Imported {{created}}, skipped {{skipped}} already present.",
     importFailed: "Import failed: {{message}}",
+    addEntryFailed: "Could not add the entry: {{message}}",
   },
 } as const;
